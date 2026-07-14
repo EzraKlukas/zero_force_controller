@@ -28,6 +28,8 @@ constexpr std::uint16_t IDX_ACTUALVEL_I32 = 0x606C;
 constexpr std::uint8_t SUB_ACTUALVEL = 0x00;
 constexpr std::uint16_t IDX_ACTUALTRQ_I16 = 0x6077;
 constexpr std::uint8_t SUB_ACTUALTRQ = 0x00;
+constexpr std::uint16_t IDX_DIGITAL_INPUTS_U32 = 0x60FD;
+constexpr std::uint8_t SUB_DIGITAL_INPUTS = 0x00;
 
 void CheckOffset(int offset, const char *what) {
   if (offset < 0) {
@@ -56,11 +58,12 @@ void Clearpath::RemapPDOs(ec_slave_config_t *sc) {
       {0x6064, 0x00, 32}, // Position actual value
       {0x606C, 0x00, 32}, // Velocity actual value
       {0x6077, 0x00, 16}, // Torque actual value
+      {0x60FD, 0x00, 32}, // Digital inputs
   };
 
   static ec_pdo_info_t pdos[] = {
       {0x1600, 5, rx_entries},
-      {0x1A00, 5, tx_entries},
+      {0x1A00, 6, tx_entries},
   };
 
   static ec_sync_info_t syncs[] = {
@@ -120,6 +123,10 @@ Clearpath::ConfigurePDOOffsets(ec_slave_config_t *sc, ec_domain_t *domain) {
       sc, IDX_ACTUALTRQ_I16, SUB_ACTUALTRQ, domain, nullptr);
   CheckOffset(offsets.tx.actual_torque, "tx.actual_torque");
 
+  offsets.tx.digital_input = ecrt_slave_config_reg_pdo_entry(
+      sc, IDX_DIGITAL_INPUTS_U32, SUB_DIGITAL_INPUTS, domain, nullptr);
+  CheckOffset(offsets.tx.digital_input, "tx.digital_input");
+
   return offsets;
 }
 
@@ -132,6 +139,7 @@ Clearpath::ReadTxPDOs(const std::uint8_t *domain_pd,
   tx.actual_position = EC_READ_S32(domain_pd + pdo_offsets.tx.actual_position);
   tx.actual_velocity = EC_READ_S32(domain_pd + pdo_offsets.tx.actual_velocity);
   tx.actual_torque = EC_READ_S16(domain_pd + pdo_offsets.tx.actual_torque);
+  tx.digital_input = EC_READ_U32(domain_pd + pdo_offsets.tx.digital_input);
   return tx;
 }
 

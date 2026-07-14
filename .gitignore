@@ -1,3 +1,8 @@
 build/
 *.csv
 *.log
+.cache/
+
+# Local build and editor artifacts
+build/
+.cache/

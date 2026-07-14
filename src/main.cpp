@@ -73,6 +73,11 @@ struct SampleRecord {
   std::int32_t motor_actual_position;
   std::int32_t motor_actual_velocity;
   std::int16_t motor_actual_torque;
+  std::uint32_t motor_digital_inputs;
+  bool motor_negative_limit_reached;
+  bool motor_positive_limit_reached;
+  bool motor_raw_input_a_line_on;
+  bool motor_raw_input_b_line_on;
 
   std::uint16_t motor_controlword;
   std::int8_t motor_mode_command;
@@ -549,6 +554,11 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
           motor.actual_position,
           motor.actual_velocity,
           motor.actual_torque,
+          motor.digital_input,
+          motor.negative_limit_reached(),
+          motor.positive_limit_reached(),
+          motor.raw_input_a_line_on(),
+          motor.raw_input_b_line_on(),
           command.controlword,
           command.mode_op,
           command.target_position,
@@ -610,7 +620,11 @@ bool WriteCsv(const std::string &path, const SampleRecord *records,
                     "elm_error,elm_underrange,elm_overrange,elm_diag,"
                     "elm_txpdo_state,motor_statusword,motor_mode_display,"
                     "motor_actual_position,motor_actual_velocity,"
-                    "motor_actual_torque,motor_controlword,"
+                    "motor_actual_torque,motor_digital_inputs,"
+                    "motor_negative_limit_reached,"
+                    "motor_positive_limit_reached,"
+                    "motor_raw_input_a_line_on,motor_raw_input_b_line_on,"
+                    "motor_controlword,"
                     "motor_mode_command,motor_target_position,"
                     "motor_target_velocity,motor_target_torque\n") >= 0;
 
@@ -629,7 +643,8 @@ bool WriteCsv(const std::string &path, const SampleRecord *records,
              file,
              "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRId64 ",%" PRId32
              ",%u,%u,%u,%u,%u,%u,%u,%u,%d,%" PRId32 ",%" PRId32 ",%" PRId16
-             ",%u,%d,%" PRId32 ",%" PRId32 ",%" PRId16 "\n",
+             ",%" PRIu32 ",%u,%u,%u,%u,%u,%d,%" PRId32 ",%" PRId32
+             ",%" PRId16 "\n",
              r.sample_index, r.scheduled_time_ns, r.actual_time_ns,
              r.wakeup_latency_ns, r.elm_raw_sample,
              static_cast<unsigned int>(r.elm_number_of_samples),
@@ -641,6 +656,11 @@ bool WriteCsv(const std::string &path, const SampleRecord *records,
              static_cast<int>(r.motor_mode_display),
              r.motor_actual_position, r.motor_actual_velocity,
              r.motor_actual_torque,
+             r.motor_digital_inputs,
+             r.motor_negative_limit_reached ? 1U : 0U,
+             r.motor_positive_limit_reached ? 1U : 0U,
+             r.motor_raw_input_a_line_on ? 1U : 0U,
+             r.motor_raw_input_b_line_on ? 1U : 0U,
              static_cast<unsigned int>(r.motor_controlword),
              static_cast<int>(r.motor_mode_command),
              r.motor_target_position, r.motor_target_velocity,
@@ -742,8 +762,7 @@ int main(int argc, char **argv) {
     ctx.clearpath_config = ecrt_master_slave_config(
         master, Clearpath::kAlias, Clearpath::kPosition, Clearpath::kVendorId,
         Clearpath::kProductCode);
-
-    if (ctx.clearpath_config == nullptr) {
+    if (!ctx.clearpath_config) {
       std::fprintf(stderr,
                    "Failed to configure ClearPath EC at alias 0, position 2.\n");
       exit_code = 1;
@@ -773,12 +792,13 @@ int main(int argc, char **argv) {
       break;
     }
 
-    ecrt_slave_config_dc(ctx.clearpath_config,
-                         Clearpath::kDcAssignActivate,
-                         kNsecPerSec / kFrequencyHz,
-                         Clearpath::kSync0ShiftNs,
-                         0,
-                         0);
+    if (ecrt_slave_config_dc(ctx.clearpath_config, Clearpath::kDcAssignActivate,
+                             kNsecPerSec / kFrequencyHz,
+                             Clearpath::kSync0ShiftNs, 0, 0) != 0) {
+      std::fprintf(stderr, "Failed to configure ClearPath distributed clocks.\n");
+      exit_code = 1;
+      break;
+    }
 
     std::printf("Activating master.\n");
     if (ecrt_master_activate(master) != 0) {

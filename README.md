@@ -70,6 +70,22 @@ After CSP enablement, the initial target position is seeded from actual
 position. By default the application holds that position and commands zero
 target velocity and zero target torque.
 
+The custom ClearPath TxPDO `0x1A00` also includes `0x60FD:00`, the unsigned
+32-bit digital input word. `CycleInputs::motor` exposes the configured logical
+limit states through `negative_limit_reached()` and
+`positive_limit_reached()`. It also exposes `raw_input_a_line_on()` and
+`raw_input_b_line_on()` for wiring diagnostics. Raw A/B line states are not
+used as logical limits because they do not include the ClearView limit mapping
+or inversion.
+
+ClearView 3.0 must separately map physical Input A to the negative limit and
+physical Input B to the positive limit, with inversion configured for the
+chosen normally-open or normally-closed wiring. This application exposes those
+limit states and records them for diagnostics, but it does not yet implement a
+software-side directional motion policy. The ClearPath drive's configured limit
+response is not a substitute for a safety-rated emergency stop or STO
+implementation.
+
 Use `--position-step-per-cycle <counts>` to reproduce the earlier constant
 motion test. Positive and negative values are accepted, and stepping starts
 only after Operation Enabled with CSP mode displayed.
@@ -166,7 +182,16 @@ sample_index,scheduled_time_ns,actual_time_ns,wakeup_latency_ns,
 elm_raw_sample,elm_number_of_samples,elm_input_cycle_counter,
 elm_error,elm_underrange,elm_overrange,elm_diag,elm_txpdo_state,
 motor_statusword,motor_mode_display,motor_actual_position,
-motor_actual_velocity,motor_actual_torque,motor_controlword,
+motor_actual_velocity,motor_actual_torque,motor_digital_inputs,
+motor_negative_limit_reached,motor_positive_limit_reached,
+motor_raw_input_a_line_on,motor_raw_input_b_line_on,motor_controlword,
 motor_mode_command,motor_target_position,motor_target_velocity,
 motor_target_torque
 ```
+
+The five digital-input columns are intended for offline checks after shutdown:
+if raw Input A/B changes but the logical limit bit does not, check ClearView
+mapping and inversion; if neither raw nor logical bits change, check wiring,
+supply, connector, PDO mapping, and communication; if the logical negative and
+positive bits follow the wrong switches, check the ClearView assignments and
+physical switch assignments.
