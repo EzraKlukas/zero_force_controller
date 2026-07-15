@@ -2,7 +2,7 @@
 
 C++20 IgH userspace bring-up application for a combined EK1100,
 ELM3604-0002, and ClearPath EC EtherCAT topology. The current scope is
-integrated communication only: read ELM3604 X1, read ClearPath feedback,
+integrated communication only: read ELM3604 X1-X3, read ClearPath feedback,
 enable the ClearPath in CSP, command a valid CSP hold target by default, and
 write one combined CSV after shutdown.
 
@@ -31,20 +31,24 @@ Verified target topology:
 The application uses one EtherCAT master and one process-data domain for all
 three slaves.
 
-## ELM3604 X1
+## ELM3604 X1-X3
 
-Only X1/channel 1 is configured. The ELM PDO assignment is intentionally
-limited to:
+X1/channel 1, X2/channel 2, and X3/channel 3 are configured for the three load
+cell axes. The ELM PDO assignment is intentionally limited to:
 
 ```text
 TxPDO 0x1A00: channel-1 status
 TxPDO 0x1A01: channel-1 sample
-sample object: 0x6001:01, signed 32-bit
+TxPDO 0x1A02: channel-2 status
+TxPDO 0x1A03: channel-2 sample
+TxPDO 0x1A04: channel-3 status
+TxPDO 0x1A05: channel-3 sample
+sample objects: X=0x6001:01, Y=0x6011:01, Z=0x6021:01, signed 32-bit
 ```
 
-The CSV stores the `0x6001:01` sample as the unmodified signed 32-bit raw PDO
-value. No voltage, force, alignment, sign-extension, or engineering-unit
-conversion is inferred.
+The CSV stores each sample as the unmodified signed 32-bit raw PDO value. No
+voltage, force, alignment, sign-extension, or engineering-unit conversion is
+inferred.
 
 The ELM3604 is an IEPE sensor terminal. Electrical compatibility with the load
 cell or its signal conditioner must be verified separately.
@@ -102,7 +106,7 @@ implementation.
 
 ```cpp
 struct CycleInputs {
-  Elm3604::Channel1 force;
+  Elm3604::Feedback force;
   Clearpath::PDO::TxPDOs motor;
   std::uint64_t sample_index;
   std::uint64_t scheduled_time_ns;
@@ -179,8 +183,12 @@ Columns:
 
 ```text
 sample_index,scheduled_time_ns,actual_time_ns,wakeup_latency_ns,
-elm_raw_sample,elm_number_of_samples,elm_input_cycle_counter,
-elm_error,elm_underrange,elm_overrange,elm_diag,elm_txpdo_state,
+elm_x_raw_sample,elm_x_number_of_samples,elm_x_input_cycle_counter,
+elm_x_error,elm_x_underrange,elm_x_overrange,elm_x_diag,elm_x_txpdo_state,
+elm_y_raw_sample,elm_y_number_of_samples,elm_y_input_cycle_counter,
+elm_y_error,elm_y_underrange,elm_y_overrange,elm_y_diag,elm_y_txpdo_state,
+elm_z_raw_sample,elm_z_number_of_samples,elm_z_input_cycle_counter,
+elm_z_error,elm_z_underrange,elm_z_overrange,elm_z_diag,elm_z_txpdo_state,
 motor_statusword,motor_mode_display,motor_actual_position,
 motor_actual_velocity,motor_actual_torque,motor_digital_inputs,
 motor_negative_limit_reached,motor_positive_limit_reached,

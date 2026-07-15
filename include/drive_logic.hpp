@@ -6,7 +6,7 @@
 #include "elm3604_pdo.hpp"
 
 struct CycleInputs {
-  Elm3604::Channel1 force;
+  Elm3604::Feedback force;
   Clearpath::PDO::TxPDOs motor;
   std::uint64_t sample_index = 0;
   std::uint64_t scheduled_time_ns = 0;

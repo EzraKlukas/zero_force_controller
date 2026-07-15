@@ -4,11 +4,11 @@
 #include <cmath>
 #include <csignal>
 #include <cstdint>
-#include <exception>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <exception>
 #include <limits>
 #include <new>
 #include <string>
@@ -59,14 +59,7 @@ struct SampleRecord {
   std::uint64_t actual_time_ns;
   std::int64_t wakeup_latency_ns;
 
-  std::int32_t elm_raw_sample;
-  std::uint8_t elm_number_of_samples;
-  std::uint8_t elm_input_cycle_counter;
-  bool elm_error;
-  bool elm_underrange;
-  bool elm_overrange;
-  bool elm_diag;
-  bool elm_txpdo_state;
+  Elm3604::Feedback elm;
 
   std::uint16_t motor_statusword;
   std::int8_t motor_mode_display;
@@ -111,8 +104,12 @@ struct RunSummary {
 
 struct CsvSummary {
   bool have_samples = false;
-  std::int32_t min_raw = 0;
-  std::int32_t max_raw = 0;
+  std::int32_t min_x_raw = 0;
+  std::int32_t max_x_raw = 0;
+  std::int32_t min_y_raw = 0;
+  std::int32_t max_y_raw = 0;
+  std::int32_t min_z_raw = 0;
+  std::int32_t max_z_raw = 0;
 };
 
 struct RuntimeContext {
@@ -279,7 +276,7 @@ void PrefaultStack() {
 }
 
 void InstallSignalHandlers() {
-  struct sigaction action {};
+  struct sigaction action{};
   action.sa_handler = SignalHandler;
   sigemptyset(&action.sa_mask);
   action.sa_flags = 0;
@@ -305,7 +302,7 @@ void ConfigureRealtimeBestEffort() {
     return;
   }
 
-  struct sched_param param {};
+  struct sched_param param{};
   param.sched_priority =
       std::clamp(kRealtimePriority, min_priority, max_priority);
   std::printf("Requesting SCHED_FIFO priority %d.\n", param.sched_priority);
@@ -346,8 +343,7 @@ void PrintReadinessSummary(const EthercatState &state) {
                "0:2 ClearPath EC.\n",
                kExpectedSlaveCount);
   if (state.have_master) {
-    std::fprintf(stderr,
-                 "Master: link=%s, slaves=%u, AL states=0x%02X.\n",
+    std::fprintf(stderr, "Master: link=%s, slaves=%u, AL states=0x%02X.\n",
                  state.master.link_up ? "up" : "down",
                  state.master.slaves_responding, state.master.al_states);
   } else {
@@ -369,14 +365,14 @@ void PrintReadinessSummary(const EthercatState &state) {
     std::fprintf(stderr, "ELM3604: no state received.\n");
   }
   if (state.have_clearpath) {
-    std::fprintf(stderr,
-                 "ClearPath: online=%u, operational=%u, AL state=0x%02X, "
-                 "statusword=0x%04X, mode_display=%d.\n",
-                 state.clearpath.online, state.clearpath.operational,
-                 state.clearpath.al_state,
-                 static_cast<unsigned int>(
-                     state.last_motor_feedback.statusword),
-                 static_cast<int>(state.last_motor_feedback.mode_display));
+    std::fprintf(
+        stderr,
+        "ClearPath: online=%u, operational=%u, AL state=0x%02X, "
+        "statusword=0x%04X, mode_display=%d.\n",
+        state.clearpath.online, state.clearpath.operational,
+        state.clearpath.al_state,
+        static_cast<unsigned int>(state.last_motor_feedback.statusword),
+        static_cast<int>(state.last_motor_feedback.mode_display));
   } else {
     std::fprintf(stderr, "ClearPath: no state received.\n");
   }
@@ -388,7 +384,7 @@ void SyncDistributedClocks(ec_master_t *master,
     --(*sync_ref_counter);
   } else {
     *sync_ref_counter = 1U;
-    timespec time {};
+    timespec time{};
     clock_gettime(CLOCK_MONOTONIC, &time);
     ecrt_master_sync_reference_clock_to(master, TimespecToNs(time));
   }
@@ -396,13 +392,13 @@ void SyncDistributedClocks(ec_master_t *master,
 }
 
 void BeginCycle(const RuntimeContext &ctx, const timespec &deadline,
-                Elm3604::Channel1 *elm_feedback,
+                Elm3604::Feedback *elm_feedback,
                 Clearpath::PDO::TxPDOs *motor_feedback,
                 std::uint64_t *actual_ns, std::int64_t *latency_ns) {
   const std::uint64_t scheduled_ns = TimespecToNs(deadline);
   ecrt_master_application_time(ctx.master, scheduled_ns);
 
-  timespec actual_time {};
+  timespec actual_time{};
   clock_gettime(CLOCK_MONOTONIC, &actual_time);
   *actual_ns = TimespecToNs(actual_time);
   *latency_ns = static_cast<std::int64_t>(*actual_ns - scheduled_ns);
@@ -410,7 +406,7 @@ void BeginCycle(const RuntimeContext &ctx, const timespec &deadline,
   ecrt_master_receive(ctx.master);
   ecrt_domain_process(ctx.domain);
 
-  *elm_feedback = Elm3604::ReadChannel1(ctx.domain_data, ctx.elm_offsets);
+  *elm_feedback = Elm3604::ReadFeedback(ctx.domain_data, ctx.elm_offsets);
   *motor_feedback =
       Clearpath::ReadTxPDOs(ctx.domain_data, ctx.clearpath_offsets);
 }
@@ -430,7 +426,7 @@ void SendBoundedShutdown(const RuntimeContext &ctx, Clearpath::Command command,
   command.target_torque = 0;
   command.mode_op = CiA402::kModeCsp;
 
-  timespec deadline {};
+  timespec deadline{};
   clock_gettime(CLOCK_MONOTONIC, &deadline);
   AddNs(&deadline, period_ns);
 
@@ -450,8 +446,8 @@ void SendBoundedShutdown(const RuntimeContext &ctx, Clearpath::Command command,
       break;
     }
 
-    Elm3604::Channel1 elm {};
-    Clearpath::PDO::TxPDOs motor {};
+    Elm3604::Feedback elm{};
+    Clearpath::PDO::TxPDOs motor{};
     std::uint64_t actual_ns = 0;
     std::int64_t latency_ns = 0;
     BeginCycle(ctx, deadline, &elm, &motor, &actual_ns, &latency_ns);
@@ -462,10 +458,10 @@ void SendBoundedShutdown(const RuntimeContext &ctx, Clearpath::Command command,
 
 RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
                      SampleRecord *records, std::uint64_t max_samples) {
-  RunSummary summary {};
-  EthercatState state {};
+  RunSummary summary{};
+  EthercatState state{};
   DriveLogic drive_logic(options.position_step_per_cycle);
-  Clearpath::Command command {};
+  Clearpath::Command command{};
   unsigned int sync_ref_counter = 0;
   bool recording = false;
   bool hold_seeded = false;
@@ -474,7 +470,7 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
   const std::uint64_t startup_timeout_ns = static_cast<std::uint64_t>(
       options.startup_timeout_seconds * static_cast<double>(kNsecPerSec));
 
-  timespec now {};
+  timespec now{};
   clock_gettime(CLOCK_MONOTONIC, &now);
   const std::uint64_t startup_start_ns = TimespecToNs(now);
   timespec deadline = now;
@@ -490,8 +486,8 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
       break;
     }
 
-    Elm3604::Channel1 elm {};
-    Clearpath::PDO::TxPDOs motor {};
+    Elm3604::Feedback elm{};
+    Clearpath::PDO::TxPDOs motor{};
     std::uint64_t actual_ns = 0;
     std::int64_t latency_ns = 0;
 
@@ -541,14 +537,7 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
           TimespecToNs(deadline),
           actual_ns,
           latency_ns,
-          elm.raw_sample,
-          elm.number_of_samples,
-          elm.input_cycle_counter,
-          elm.error,
-          elm.underrange,
-          elm.overrange,
-          elm.diag,
-          elm.txpdo_state,
+          elm,
           motor.statusword,
           motor.mode_display,
           motor.actual_position,
@@ -584,6 +573,36 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
   return summary;
 }
 
+void IncludeElmSample(const Elm3604::Feedback &elm, CsvSummary *summary) {
+  if (!summary->have_samples) {
+    summary->min_x_raw = elm.x.raw_sample;
+    summary->max_x_raw = elm.x.raw_sample;
+    summary->min_y_raw = elm.y.raw_sample;
+    summary->max_y_raw = elm.y.raw_sample;
+    summary->min_z_raw = elm.z.raw_sample;
+    summary->max_z_raw = elm.z.raw_sample;
+    summary->have_samples = true;
+    return;
+  }
+
+  summary->min_x_raw = std::min(summary->min_x_raw, elm.x.raw_sample);
+  summary->max_x_raw = std::max(summary->max_x_raw, elm.x.raw_sample);
+  summary->min_y_raw = std::min(summary->min_y_raw, elm.y.raw_sample);
+  summary->max_y_raw = std::max(summary->max_y_raw, elm.y.raw_sample);
+  summary->min_z_raw = std::min(summary->min_z_raw, elm.z.raw_sample);
+  summary->max_z_raw = std::max(summary->max_z_raw, elm.z.raw_sample);
+}
+
+int PrintElmChannelCsv(FILE *file, const Elm3604::Channel &channel) {
+  return std::fprintf(
+      file, "%" PRId32 ",%u,%u,%u,%u,%u,%u,%u", channel.raw_sample,
+      static_cast<unsigned int>(channel.number_of_samples),
+      static_cast<unsigned int>(channel.input_cycle_counter),
+      channel.error ? 1U : 0U, channel.underrange ? 1U : 0U,
+      channel.overrange ? 1U : 0U, channel.diag ? 1U : 0U,
+      channel.txpdo_state ? 1U : 0U);
+}
+
 bool WriteCsv(const std::string &path, const SampleRecord *records,
               std::uint64_t sample_count, const Options &options,
               const RunSummary &run_summary, CsvSummary *csv_summary) {
@@ -596,75 +615,76 @@ bool WriteCsv(const std::string &path, const SampleRecord *records,
 
   bool ok = true;
   ok = ok && std::fprintf(file, "# zero_force_controller\n") >= 0;
-  ok = ok &&
-       std::fprintf(file,
-                    "# topology: 0:0 EK1100, 0:1 ELM3604-0002, 0:2 "
-                    "ClearPath EC\n") >= 0;
+  ok = ok && std::fprintf(file, "# topology: 0:0 EK1100, 0:1 ELM3604-0002, 0:2 "
+                                "ClearPath EC\n") >= 0;
   ok = ok && std::fprintf(file, "# frequency_hz: %u\n", kFrequencyHz) >= 0;
   ok = ok && std::fprintf(file, "# requested_duration_s: %.9g\n",
                           options.duration_seconds) >= 0;
   ok = ok && std::fprintf(file, "# position_step_per_cycle: %" PRId32 "\n",
                           options.position_step_per_cycle) >= 0;
-  ok = ok && std::fprintf(file, "# elm_sample_entry: 0x6001:01\n") >= 0;
-  ok = ok && std::fprintf(file, "# elm_sample_type: signed 32-bit raw PDO\n") >=
-                 0;
+  ok = ok &&
+       std::fprintf(file,
+                    "# elm_sample_entries: x=0x6001:01, y=0x6011:01, "
+                    "z=0x6021:01\n") >= 0;
+  ok = ok &&
+       std::fprintf(file, "# elm_sample_type: signed 32-bit raw PDO\n") >= 0;
   ok = ok && std::fprintf(file, "# clearpath_mode: CSP\n") >= 0;
   ok = ok && std::fprintf(file, "# samples: %" PRIu64 "\n", sample_count) >= 0;
   ok = ok && std::fprintf(file, "# timing_overruns: %" PRIu64 "\n",
                           run_summary.timing_overruns) >= 0;
   ok = ok &&
-       std::fprintf(file,
-                    "sample_index,scheduled_time_ns,actual_time_ns,"
-                    "wakeup_latency_ns,elm_raw_sample,"
-                    "elm_number_of_samples,elm_input_cycle_counter,"
-                    "elm_error,elm_underrange,elm_overrange,elm_diag,"
-                    "elm_txpdo_state,motor_statusword,motor_mode_display,"
-                    "motor_actual_position,motor_actual_velocity,"
-                    "motor_actual_torque,motor_digital_inputs,"
-                    "motor_negative_limit_reached,"
-                    "motor_positive_limit_reached,"
-                    "motor_raw_input_a_line_on,motor_raw_input_b_line_on,"
-                    "motor_controlword,"
-                    "motor_mode_command,motor_target_position,"
-                    "motor_target_velocity,motor_target_torque\n") >= 0;
+       std::fprintf(file, "sample_index,scheduled_time_ns,actual_time_ns,"
+                          "wakeup_latency_ns,"
+                          "elm_x_raw_sample,elm_x_number_of_samples,"
+                          "elm_x_input_cycle_counter,elm_x_error,"
+                          "elm_x_underrange,elm_x_overrange,elm_x_diag,"
+                          "elm_x_txpdo_state,"
+                          "elm_y_raw_sample,elm_y_number_of_samples,"
+                          "elm_y_input_cycle_counter,elm_y_error,"
+                          "elm_y_underrange,elm_y_overrange,elm_y_diag,"
+                          "elm_y_txpdo_state,"
+                          "elm_z_raw_sample,elm_z_number_of_samples,"
+                          "elm_z_input_cycle_counter,elm_z_error,"
+                          "elm_z_underrange,elm_z_overrange,elm_z_diag,"
+                          "elm_z_txpdo_state,"
+                          "motor_statusword,motor_mode_display,"
+                          "motor_actual_position,motor_actual_velocity,"
+                          "motor_actual_torque,motor_digital_inputs,"
+                          "motor_negative_limit_reached,"
+                          "motor_positive_limit_reached,"
+                          "motor_raw_input_a_line_on,motor_raw_input_b_line_on,"
+                          "motor_controlword,"
+                          "motor_mode_command,motor_target_position,"
+                          "motor_target_velocity,motor_target_torque\n") >= 0;
 
   for (std::uint64_t i = 0; ok && i < sample_count; ++i) {
     const SampleRecord &r = records[i];
-    if (!csv_summary->have_samples) {
-      csv_summary->min_raw = r.elm_raw_sample;
-      csv_summary->max_raw = r.elm_raw_sample;
-      csv_summary->have_samples = true;
-    } else {
-      csv_summary->min_raw = std::min(csv_summary->min_raw, r.elm_raw_sample);
-      csv_summary->max_raw = std::max(csv_summary->max_raw, r.elm_raw_sample);
-    }
+    IncludeElmSample(r.elm, csv_summary);
 
-    ok = std::fprintf(
+    ok = ok && std::fprintf(file, "%" PRIu64 ",%" PRIu64 ",%" PRIu64
+                                  ",%" PRId64 ",",
+                            r.sample_index, r.scheduled_time_ns,
+                            r.actual_time_ns, r.wakeup_latency_ns) >= 0;
+    ok = ok && PrintElmChannelCsv(file, r.elm.x) >= 0;
+    ok = ok && std::fprintf(file, ",") >= 0;
+    ok = ok && PrintElmChannelCsv(file, r.elm.y) >= 0;
+    ok = ok && std::fprintf(file, ",") >= 0;
+    ok = ok && PrintElmChannelCsv(file, r.elm.z) >= 0;
+    ok = ok &&
+         std::fprintf(
              file,
-             "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRId64 ",%" PRId32
-             ",%u,%u,%u,%u,%u,%u,%u,%u,%d,%" PRId32 ",%" PRId32 ",%" PRId16
-             ",%" PRIu32 ",%u,%u,%u,%u,%u,%d,%" PRId32 ",%" PRId32
-             ",%" PRId16 "\n",
-             r.sample_index, r.scheduled_time_ns, r.actual_time_ns,
-             r.wakeup_latency_ns, r.elm_raw_sample,
-             static_cast<unsigned int>(r.elm_number_of_samples),
-             static_cast<unsigned int>(r.elm_input_cycle_counter),
-             r.elm_error ? 1U : 0U, r.elm_underrange ? 1U : 0U,
-             r.elm_overrange ? 1U : 0U, r.elm_diag ? 1U : 0U,
-             r.elm_txpdo_state ? 1U : 0U,
+             ",%u,%d,%" PRId32 ",%" PRId32 ",%" PRId16 ",%" PRIu32
+             ",%u,%u,%u,%u,%u,%d,%" PRId32 ",%" PRId32 ",%" PRId16 "\n",
              static_cast<unsigned int>(r.motor_statusword),
-             static_cast<int>(r.motor_mode_display),
-             r.motor_actual_position, r.motor_actual_velocity,
-             r.motor_actual_torque,
-             r.motor_digital_inputs,
-             r.motor_negative_limit_reached ? 1U : 0U,
+             static_cast<int>(r.motor_mode_display), r.motor_actual_position,
+             r.motor_actual_velocity, r.motor_actual_torque,
+             r.motor_digital_inputs, r.motor_negative_limit_reached ? 1U : 0U,
              r.motor_positive_limit_reached ? 1U : 0U,
              r.motor_raw_input_a_line_on ? 1U : 0U,
              r.motor_raw_input_b_line_on ? 1U : 0U,
              static_cast<unsigned int>(r.motor_controlword),
-             static_cast<int>(r.motor_mode_command),
-             r.motor_target_position, r.motor_target_velocity,
-             r.motor_target_torque) >= 0;
+             static_cast<int>(r.motor_mode_command), r.motor_target_position,
+             r.motor_target_velocity, r.motor_target_torque) >= 0;
   }
 
   if (std::ferror(file)) {
@@ -709,8 +729,7 @@ int main(int argc, char **argv) {
 
   SampleRecord *records = new (std::nothrow) SampleRecord[max_samples];
   if (!records) {
-    std::fprintf(stderr,
-                 "Failed to allocate buffer for %" PRIu64 " records.\n",
+    std::fprintf(stderr, "Failed to allocate buffer for %" PRIu64 " records.\n",
                  max_samples);
     return 1;
   }
@@ -727,9 +746,9 @@ int main(int argc, char **argv) {
   }
 
   int exit_code = 0;
-  RuntimeContext ctx {};
+  RuntimeContext ctx{};
   ctx.master = master;
-  RunSummary run_summary {};
+  RunSummary run_summary{};
 
   do {
     ctx.domain = ecrt_master_create_domain(master);
@@ -753,8 +772,8 @@ int main(int argc, char **argv) {
         ecrt_master_slave_config(master, Elm3604::kAlias, Elm3604::kPosition,
                                  Elm3604::kVendorId, Elm3604::kProductCode);
     if (!ctx.elm3604_config) {
-      std::fprintf(stderr,
-                   "Failed to configure ELM3604-0002 at alias 0, position 1.\n");
+      std::fprintf(
+          stderr, "Failed to configure ELM3604-0002 at alias 0, position 1.\n");
       exit_code = 1;
       break;
     }
@@ -763,15 +782,15 @@ int main(int argc, char **argv) {
         master, Clearpath::kAlias, Clearpath::kPosition, Clearpath::kVendorId,
         Clearpath::kProductCode);
     if (!ctx.clearpath_config) {
-      std::fprintf(stderr,
-                   "Failed to configure ClearPath EC at alias 0, position 2.\n");
+      std::fprintf(
+          stderr, "Failed to configure ClearPath EC at alias 0, position 2.\n");
       exit_code = 1;
       break;
     }
 
-    std::printf("Configuring ELM3604 X1 TxPDOs 0x%04X and 0x%04X.\n",
-                Elm3604::kChannel1StatusTxPdo,
-                Elm3604::kChannel1SampleTxPdo);
+    std::printf(
+        "Configuring ELM3604 X1-X3 TxPDOs 0x%04X-0x%04X.\n",
+        Elm3604::kChannel1StatusTxPdo, Elm3604::kChannel3SampleTxPdo);
     if (!Elm3604::ConfigurePDOs(ctx.elm3604_config)) {
       exit_code = 1;
       break;
@@ -792,12 +811,9 @@ int main(int argc, char **argv) {
       break;
     }
 
-    ecrt_slave_config_dc(ctx.clearpath_config,
-                     Clearpath::kDcAssignActivate,
-                     kNsecPerSec / kFrequencyHz,
-                     Clearpath::kSync0ShiftNs,
-                     0,
-                     0);
+    ecrt_slave_config_dc(ctx.clearpath_config, Clearpath::kDcAssignActivate,
+                         kNsecPerSec / kFrequencyHz, Clearpath::kSync0ShiftNs,
+                         0, 0);
 
     std::printf("Activating master.\n");
     if (ecrt_master_activate(master) != 0) {
@@ -835,7 +851,7 @@ int main(int argc, char **argv) {
       !run_summary.startup_timeout &&
       (exit_code == 0 || run_summary.samples > 0 || run_summary.interrupted);
   if (should_write_csv) {
-    CsvSummary csv_summary {};
+    CsvSummary csv_summary{};
     if (!WriteCsv(options.output_path, records, run_summary.samples, options,
                   run_summary, &csv_summary)) {
       exit_code = 1;
@@ -843,8 +859,12 @@ int main(int argc, char **argv) {
       std::printf("Output: %s\n", options.output_path.c_str());
       std::printf("Samples: %" PRIu64 "\n", run_summary.samples);
       if (csv_summary.have_samples) {
-        std::printf("ELM raw sample min/max: %" PRId32 " / %" PRId32 "\n",
-                    csv_summary.min_raw, csv_summary.max_raw);
+        std::printf("ELM X raw sample min/max: %" PRId32 " / %" PRId32 "\n",
+                    csv_summary.min_x_raw, csv_summary.max_x_raw);
+        std::printf("ELM Y raw sample min/max: %" PRId32 " / %" PRId32 "\n",
+                    csv_summary.min_y_raw, csv_summary.max_y_raw);
+        std::printf("ELM Z raw sample min/max: %" PRId32 " / %" PRId32 "\n",
+                    csv_summary.min_z_raw, csv_summary.max_z_raw);
       } else {
         std::printf("ELM raw sample min/max: no samples captured\n");
       }
