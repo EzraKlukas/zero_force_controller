@@ -76,6 +76,7 @@ public:
     ChannelPdoOffsets z;
   };
 
+  static bool ConfigureStartupSdos(ec_slave_config_t* sc);
   static bool ConfigurePDOs(ec_slave_config_t *sc);
   static bool RegisterPDOEntries(ec_domain_t *domain, PdoOffsets *offsets);
   static Feedback ReadFeedback(const std::uint8_t *domain_pd,

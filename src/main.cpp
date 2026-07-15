@@ -789,6 +789,10 @@ int main(int argc, char **argv) {
 
     std::printf("Configuring ELM3604 X1-X3 TxPDOs 0x%04X-0x%04X.\n",
                 Elm3604::kChannel1StatusTxPdo, Elm3604::kChannel3SampleTxPdo);
+    if (!Elm3604::ConfigureStartupSdos(ctx.elm3604_config)) {
+        exit_code = 1;
+        break;
+    }
     if (!Elm3604::ConfigurePDOs(ctx.elm3604_config)) {
       exit_code = 1;
       break;
@@ -798,22 +802,18 @@ int main(int argc, char **argv) {
       break;
     }
 
-    constexpr std::uint32_t kCyclePeriodNs = 1'000'000;
-
-    constexpr std::uint16_t kElmDcAssignActivate = 0x0300;
-
+    constexpr std::uint32_t kElmSync0CycleNs = 1'000'000;
+    constexpr std::uint16_t kElmDcAssignActivate = 0x0700;
     constexpr std::int32_t kElmSync0ShiftNs = 0;
-
-    constexpr std::uint32_t kElmSync1PeriodNs = kCyclePeriodNs;
-    constexpr std::int32_t kElmSync1ShiftNs = 20'000;
+    constexpr std::uint32_t kElmSync1DelayNs = 20'000;
 
     ecrt_slave_config_dc(
             ctx.elm3604_config,
             kElmDcAssignActivate,
-            kCyclePeriodNs,
+            kElmSync0CycleNs,
             kElmSync0ShiftNs,
-            kElmSync1PeriodNs,
-            kElmSync1ShiftNs);
+            kElmSync1DelayNs,
+            0);
 
     std::printf("Configuring ClearPath CSP PDOs and distributed clocks.\n");
     try {

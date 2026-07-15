@@ -12,6 +12,8 @@ constexpr std::uint8_t kDiagSubindex = 0x0D;
 constexpr std::uint8_t kTxPdoStateSubindex = 0x0E;
 constexpr std::uint8_t kCycleCounterSubindex = 0x0F;
 
+
+
 Elm3604::Channel ReadChannel(const std::uint8_t *domain_pd,
                              const Elm3604::ChannelPdoOffsets &offsets) {
   Elm3604::Channel channel{};
@@ -204,4 +206,49 @@ Elm3604::Feedback Elm3604::ReadFeedback(
   feedback.y = ReadChannel(domain_pd, offsets.y);
   feedback.z = ReadChannel(domain_pd, offsets.z);
   return feedback;
+}
+
+bool Elm3604::ConfigureStartupSdos(ec_slave_config_t* sc) {
+  if (sc == nullptr) {
+    std::fprintf(stderr, "ELM3604 configuration is null.\n");
+    return false;
+  }
+
+  constexpr std::uint16_t kChannelSettings[] = {
+      0x8000,  // X1
+      0x8010,  // X2
+      0x8020,  // X3
+  };
+
+  constexpr std::uint16_t kInterfaceZeroToTenVolts = 108;
+  constexpr std::uint16_t kDcCoupling = 0;
+  constexpr std::uint8_t kIepeCurrentOff = 0;
+  constexpr std::uint16_t kNoFilter = 0;
+  constexpr std::uint16_t kDecimationOne = 1;
+  constexpr std::uint16_t kRawExtendedRange = 0;
+
+  for (const std::uint16_t index : kChannelSettings) {
+    if (ecrt_slave_config_sdo16(
+            sc, index, 0x01, kInterfaceZeroToTenVolts) < 0 ||
+        ecrt_slave_config_sdo16(
+            sc, index, 0x03, kDcCoupling) < 0 ||
+        ecrt_slave_config_sdo8(
+            sc, index, 0x07, kIepeCurrentOff) < 0 ||
+        ecrt_slave_config_sdo16(
+            sc, index, 0x16, kNoFilter) < 0 ||
+        ecrt_slave_config_sdo16(
+            sc, index, 0x18, kDecimationOne) < 0 ||
+        ecrt_slave_config_sdo16(
+            sc, index, 0x19, kNoFilter) < 0 ||
+        ecrt_slave_config_sdo16(
+            sc, index, 0x2E, kRawExtendedRange) < 0) {
+      std::fprintf(
+          stderr,
+          "Failed to queue ELM3604 startup SDOs for 0x%04X.\n",
+          index);
+      return false;
+    }
+  }
+
+  return true;
 }
