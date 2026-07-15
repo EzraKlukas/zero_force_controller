@@ -1,4 +1,5 @@
 #include "drive_logic.hpp"
+#include <cmath>
 
 #include "cia402.hpp"
 
@@ -16,9 +17,33 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   (void)inputs.scheduled_time_ns;
   (void)inputs.wakeup_latency_ns;
 
-  if (inputs.motor.negative_limit_reached() or
-      inputs.motor.positive_limit_reached()) {
-    position_step_per_cycle_ *= -1;
+  const bool negative_limit =
+      inputs.motor.negative_limit_reached();
+  const bool positive_limit =
+      inputs.motor.positive_limit_reached();
+
+  // Rearm each limit after the switch is released.
+  if (!negative_limit) {
+      negative_limit_latched_ = false;
+  }
+  if (!positive_limit) {
+      positive_limit_latched_ = false;
+  }
+
+  // Reverse only when moving into the asserted limit, and only once
+  // per assertion. Note that positive position_step_per_cycle corresponds to downward motion of the load cell.
+  if (position_step_per_cycle_ < 0 &&
+          negative_limit &&
+          !negative_limit_latched_) {
+      position_step_per_cycle_ = -position_step_per_cycle_;
+      negative_limit_latched_ = true;
+  }
+
+  if (position_step_per_cycle_ > 0 &&
+          positive_limit &&
+          !positive_limit_latched_) {
+      position_step_per_cycle_ = -position_step_per_cycle_;
+      positive_limit_latched_ = true;
   }
 
   target_position_ += position_step_per_cycle_;

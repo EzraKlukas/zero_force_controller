@@ -24,4 +24,7 @@ public:
 private:
   std::int32_t position_step_per_cycle_ = 0;
   std::int32_t target_position_ = 0;
+
+  bool negative_limit_latched_ = false;
+  bool positive_limit_latched_ = false;
 };

@@ -28,7 +28,7 @@ namespace {
 
 constexpr std::uint64_t kNsecPerSec = 1000000000ULL;
 constexpr unsigned int kFrequencyHz = 1000;
-constexpr double kDefaultDurationSeconds = 10.0;
+constexpr double kDefaultDurationSeconds = 60.0;
 constexpr double kDefaultStartupTimeoutSeconds = 15.0;
 constexpr std::int32_t kDefaultPositionStepPerCycle = 0;
 constexpr unsigned int kExpectedSlaveCount = 3;

@@ -18,13 +18,13 @@ public:
 
   static constexpr std::uint16_t kChannel2StatusObject = 0x6010;
   static constexpr std::uint16_t kChannel2SampleObject = 0x6011;
-  static constexpr std::uint16_t kChannel2StatusTxPdo = 0x1A02;
-  static constexpr std::uint16_t kChannel2SampleTxPdo = 0x1A03;
+  static constexpr std::uint16_t kChannel2StatusTxPdo = 0x1A21;
+  static constexpr std::uint16_t kChannel2SampleTxPdo = 0x1A22;
 
   static constexpr std::uint16_t kChannel3StatusObject = 0x6020;
   static constexpr std::uint16_t kChannel3SampleObject = 0x6021;
-  static constexpr std::uint16_t kChannel3StatusTxPdo = 0x1A04;
-  static constexpr std::uint16_t kChannel3SampleTxPdo = 0x1A05;
+  static constexpr std::uint16_t kChannel3StatusTxPdo = 0x1A42;
+  static constexpr std::uint16_t kChannel3SampleTxPdo = 0x1A43;
 
   static constexpr std::uint8_t kSampleSubindex = 0x01;
 
