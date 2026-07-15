@@ -798,6 +798,23 @@ int main(int argc, char **argv) {
       break;
     }
 
+    constexpr std::uint32_t kCyclePeriodNs = 1'000'000;
+
+    constexpr std::uint16_t kElmDcAssignActivate = 0x0300;
+
+    constexpr std::int32_t kElmSync0ShiftNs = 0;
+
+    constexpr std::uint32_t kElmSync1PeriodNs = kCyclePeriodNs;
+    constexpr std::int32_t kElmSync1ShiftNs = 20'000;
+
+    ecrt_slave_config_dc(
+            ctx.elm3604_config,
+            kElmDcAssignActivate,
+            kCyclePeriodNs,
+            kElmSync0ShiftNs,
+            kElmSync1PeriodNs,
+            kElmSync1ShiftNs);
+
     std::printf("Configuring ClearPath CSP PDOs and distributed clocks.\n");
     try {
       Clearpath::RemapPDOs(ctx.clearpath_config);
