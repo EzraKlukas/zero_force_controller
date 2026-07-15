@@ -1,10 +1,11 @@
 # zero_force_controller
 
-C++20 IgH userspace bring-up application for a combined EK1100,
-ELM3604-0002, and ClearPath EC EtherCAT topology. The current scope is
-integrated communication only: read ELM3604 X1-X3, read ClearPath feedback,
-enable the ClearPath in CSP, command a valid CSP hold target by default, and
-write one combined CSV after shutdown.
+C++20 IgH userspace bring-up and acquisition application for a combined
+EK1100, ELM3604-0002, and ClearPath EC EtherCAT topology. The current scope is
+integrated communication: read three-dimensional force-channel data from
+ELM3604 X1-X3, read ClearPath feedback and switch states, enable the ClearPath
+in CSP, command a valid CSP hold target by default, optionally step the target
+position with limit-switch reversal, and write one combined CSV after shutdown.
 
 This is not a force controller yet. It does not implement force control, PID,
 impedance or admittance control, filtering, load-cell calibration, or
@@ -39,10 +40,10 @@ cell axes. The ELM PDO assignment is intentionally limited to:
 ```text
 TxPDO 0x1A00: channel-1 status
 TxPDO 0x1A01: channel-1 sample
-TxPDO 0x1A02: channel-2 status
-TxPDO 0x1A03: channel-2 sample
-TxPDO 0x1A04: channel-3 status
-TxPDO 0x1A05: channel-3 sample
+TxPDO 0x1A21: channel-2 status
+TxPDO 0x1A22: channel-2 sample
+TxPDO 0x1A42: channel-3 status
+TxPDO 0x1A43: channel-3 sample
 sample objects: X=0x6001:01, Y=0x6011:01, Z=0x6021:01, signed 32-bit
 ```
 
@@ -50,8 +51,10 @@ The CSV stores each sample as the unmodified signed 32-bit raw PDO value. No
 voltage, force, alignment, sign-extension, or engineering-unit conversion is
 inferred.
 
-The ELM3604 is an IEPE sensor terminal. Electrical compatibility with the load
-cell or its signal conditioner must be verified separately.
+Startup SDOs configure X1-X3 as 0-10 V, DC-coupled inputs with IEPE current
+off, no filter, decimation 1, and raw extended range off. Electrical
+compatibility with the load cell or its signal conditioner must be verified
+separately.
 
 ## ClearPath CSP
 
@@ -84,15 +87,18 @@ or inversion.
 
 ClearView 3.0 must separately map physical Input A to the negative limit and
 physical Input B to the positive limit, with inversion configured for the
-chosen normally-open or normally-closed wiring. This application exposes those
-limit states and records them for diagnostics, but it does not yet implement a
-software-side directional motion policy. The ClearPath drive's configured limit
-response is not a substitute for a safety-rated emergency stop or STO
-implementation.
+chosen normally-open or normally-closed wiring. `DriveLogic` listens to those
+logical limit states. When `--position-step-per-cycle` is nonzero, it reverses
+the step direction once when moving into an asserted limit, then rearms that
+limit after the switch is released. With the default zero step, switch states
+are still captured but no commanded motion is generated. The ClearPath drive's
+configured limit response and this software reversal are not substitutes for a
+safety-rated emergency stop or STO implementation.
 
-Use `--position-step-per-cycle <counts>` to reproduce the earlier constant
-motion test. Positive and negative values are accepted, and stepping starts
-only after Operation Enabled with CSP mode displayed.
+Use `--position-step-per-cycle <counts>` to run the bounded motion test.
+Positive and negative values are accepted, and stepping starts only after
+Operation Enabled with CSP mode displayed. Positive values correspond to
+downward motion of the load cell in the current setup.
 
 On SIGINT, SIGTERM, timeout, or duration completion, the application stops
 incrementing, holds the current target, keeps velocity and torque commands at
@@ -145,7 +151,7 @@ link against its own installed ARM64 IgH userspace library.
 
 ## Run On The Jetson
 
-No-motion bring-up:
+No-motion three-axis acquisition:
 
 ```sh
 sudo ./build/zero_force_controller \
@@ -153,7 +159,7 @@ sudo ./build/zero_force_controller \
     --output combined_capture.csv
 ```
 
-Explicit motion test:
+Motion test with switch reversal:
 
 ```sh
 sudo ./build/zero_force_controller \
