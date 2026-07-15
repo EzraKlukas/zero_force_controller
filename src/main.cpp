@@ -792,13 +792,12 @@ int main(int argc, char **argv) {
       break;
     }
 
-    if (ecrt_slave_config_dc(ctx.clearpath_config, Clearpath::kDcAssignActivate,
-                             kNsecPerSec / kFrequencyHz,
-                             Clearpath::kSync0ShiftNs, 0, 0) != 0) {
-      std::fprintf(stderr, "Failed to configure ClearPath distributed clocks.\n");
-      exit_code = 1;
-      break;
-    }
+    ecrt_slave_config_dc(ctx.clearpath_config,
+                     Clearpath::kDcAssignActivate,
+                     kNsecPerSec / kFrequencyHz,
+                     Clearpath::kSync0ShiftNs,
+                     0,
+                     0);
 
     std::printf("Activating master.\n");
     if (ecrt_master_activate(master) != 0) {
