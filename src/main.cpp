@@ -594,13 +594,13 @@ void IncludeElmSample(const Elm3604::Feedback &elm, CsvSummary *summary) {
 }
 
 int PrintElmChannelCsv(FILE *file, const Elm3604::Channel &channel) {
-  return std::fprintf(
-      file, "%" PRId32 ",%u,%u,%u,%u,%u,%u,%u", channel.raw_sample,
-      static_cast<unsigned int>(channel.number_of_samples),
-      static_cast<unsigned int>(channel.input_cycle_counter),
-      channel.error ? 1U : 0U, channel.underrange ? 1U : 0U,
-      channel.overrange ? 1U : 0U, channel.diag ? 1U : 0U,
-      channel.txpdo_state ? 1U : 0U);
+  return std::fprintf(file, "%" PRId32 ",%u,%u,%u,%u,%u,%u,%u",
+                      channel.raw_sample,
+                      static_cast<unsigned int>(channel.number_of_samples),
+                      static_cast<unsigned int>(channel.input_cycle_counter),
+                      channel.error ? 1U : 0U, channel.underrange ? 1U : 0U,
+                      channel.overrange ? 1U : 0U, channel.diag ? 1U : 0U,
+                      channel.txpdo_state ? 1U : 0U);
 }
 
 bool WriteCsv(const std::string &path, const SampleRecord *records,
@@ -623,9 +623,8 @@ bool WriteCsv(const std::string &path, const SampleRecord *records,
   ok = ok && std::fprintf(file, "# position_step_per_cycle: %" PRId32 "\n",
                           options.position_step_per_cycle) >= 0;
   ok = ok &&
-       std::fprintf(file,
-                    "# elm_sample_entries: x=0x6001:01, y=0x6011:01, "
-                    "z=0x6021:01\n") >= 0;
+       std::fprintf(file, "# elm_sample_entries: x=0x6001:01, y=0x6011:01, "
+                          "z=0x6021:01\n") >= 0;
   ok = ok &&
        std::fprintf(file, "# elm_sample_type: signed 32-bit raw PDO\n") >= 0;
   ok = ok && std::fprintf(file, "# clearpath_mode: CSP\n") >= 0;
@@ -661,10 +660,10 @@ bool WriteCsv(const std::string &path, const SampleRecord *records,
     const SampleRecord &r = records[i];
     IncludeElmSample(r.elm, csv_summary);
 
-    ok = ok && std::fprintf(file, "%" PRIu64 ",%" PRIu64 ",%" PRIu64
-                                  ",%" PRId64 ",",
-                            r.sample_index, r.scheduled_time_ns,
-                            r.actual_time_ns, r.wakeup_latency_ns) >= 0;
+    ok = ok &&
+         std::fprintf(file, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRId64 ",",
+                      r.sample_index, r.scheduled_time_ns, r.actual_time_ns,
+                      r.wakeup_latency_ns) >= 0;
     ok = ok && PrintElmChannelCsv(file, r.elm.x) >= 0;
     ok = ok && std::fprintf(file, ",") >= 0;
     ok = ok && PrintElmChannelCsv(file, r.elm.y) >= 0;
@@ -788,9 +787,8 @@ int main(int argc, char **argv) {
       break;
     }
 
-    std::printf(
-        "Configuring ELM3604 X1-X3 TxPDOs 0x%04X-0x%04X.\n",
-        Elm3604::kChannel1StatusTxPdo, Elm3604::kChannel3SampleTxPdo);
+    std::printf("Configuring ELM3604 X1-X3 TxPDOs 0x%04X-0x%04X.\n",
+                Elm3604::kChannel1StatusTxPdo, Elm3604::kChannel3SampleTxPdo);
     if (!Elm3604::ConfigurePDOs(ctx.elm3604_config)) {
       exit_code = 1;
       break;

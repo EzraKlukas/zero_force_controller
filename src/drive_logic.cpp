@@ -16,6 +16,11 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   (void)inputs.scheduled_time_ns;
   (void)inputs.wakeup_latency_ns;
 
+  if (inputs.motor.negative_limit_reached() or
+      inputs.motor.positive_limit_reached()) {
+    position_step_per_cycle_ *= -1;
+  }
+
   target_position_ += position_step_per_cycle_;
 
   command->controlword = CiA402::kControlwordEnableOperation;
