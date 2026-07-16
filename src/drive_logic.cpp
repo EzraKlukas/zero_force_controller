@@ -67,8 +67,10 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   if (!LimitSwitchCheck(inputs)) {
     const auto delta_x = inputs.force.x.raw_sample - target_x_;
     if (std::abs(delta_x) > (5 * rms_delta_x_)) {
-      next_position_step_ = std::signbit(delta_x) ? default_step_per_cycle_
-                                                  : -default_step_per_cycle_;
+      double ratio = static_cast<double>(delta_x) / 200000.0;
+      ratio = std::clamp(ratio, -1.0, 1.0);
+      next_position_step_ =
+          static_cast<int32_t>(ratio * default_step_per_cycle_);
     } else {
       next_position_step_ = 0;
     }
