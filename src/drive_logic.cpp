@@ -66,12 +66,15 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   if (!LimitSwitchCheck(inputs)) {
     const auto delta_x = inputs.force.x.raw_sample - target_x_;
     if (std::abs(delta_x) > (5 * rms_delta_x_)) {
-      next_position_step_ = static_cast<int32_t>(kp_ / 1000.0 * delta_x);
+      next_velocity_step_ = -static_cast<int32_t>(kp_ / 1000.0 * delta_x);
     } else {
-      next_position_step_ = 0;
+      next_velocity_step_ = 0;
     }
   }
 
+  // next_position_step_ is a globally accruing variable.
+  // next_velocity_step_ is essentially acceleration
+  next_position_step_ += next_velocity_step_;
   target_position_ += next_position_step_;
 
   command->controlword = CiA402::kControlwordEnableOperation;

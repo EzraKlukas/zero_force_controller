@@ -27,6 +27,7 @@ public:
 
 private:
   std::int32_t next_position_step_ = 0;
+  std::int32_t next_velocity_step_ = 0;
   std::int32_t target_position_ = 0;
   std::int32_t target_x_ = 0;
   std::int32_t rms_delta_x_ = 0;
