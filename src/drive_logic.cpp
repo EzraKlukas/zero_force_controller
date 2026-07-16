@@ -5,7 +5,7 @@
 
 #include "cia402.hpp"
 
-DriveLogic::DriveLogic(double kp) : kp_(kp) {}
+DriveLogic::DriveLogic(double kp, double drag) : kp_(kp), drag_(drag) {}
 
 void DriveLogic::ResetHoldPosition(std::int32_t actual_position) {
   target_position_ = actual_position;
@@ -73,8 +73,10 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   }
 
   // next_position_step_ is a globally accruing variable.
-  // next_velocity_step_ is essentially acceleration
+  // next_velocity_step_ is essentially acceleration \propto force.
   next_position_step_ += next_velocity_step_;
+  next_position_step_ =
+      static_cast<int32_t>((1.0 - drag_) * next_position_step_);
   target_position_ += next_position_step_;
 
   command->controlword = CiA402::kControlwordEnableOperation;

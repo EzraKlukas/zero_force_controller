@@ -32,6 +32,7 @@ constexpr double kDefaultDurationSeconds = 60.0;
 constexpr double kDefaultStartupTimeoutSeconds = 20.0;
 constexpr std::int32_t kDefaultPositionStepPerCycle = 0;
 constexpr double kDefaultProportionality = 0;
+constexpr double kDefaultDrag = 0;
 constexpr unsigned int kExpectedSlaveCount = 3;
 constexpr int kRealtimePriority = 50;
 constexpr std::size_t kMaxSafeStack = 8U * 1024U;
@@ -43,7 +44,6 @@ constexpr std::uint32_t kEk1100ProductCode = 0x044c2c52;
 constexpr unsigned int kShutdownHoldCycles = 20;
 constexpr unsigned int kShutdownCycles = 50;
 constexpr unsigned int kDisableVoltageCycles = 50;
-constexpr unsigned int kRequiredReadyCycles = 100;
 
 volatile std::sig_atomic_t g_stop_requested = 0;
 
@@ -53,6 +53,7 @@ struct Options {
   std::string output_path = "combined_capture.csv";
   std::int32_t position_step_per_cycle = kDefaultPositionStepPerCycle;
   double kp = kDefaultProportionality;
+  double drag = kDefaultDrag;
   bool help = false;
 };
 
@@ -141,7 +142,8 @@ void PrintUsage(const char *program) {
       "(default: %.1f).\n"
       "  --position-step-per-cycle <counts>  Optional CSP target-position step "
       "after enablement (default: %d).\n"
-      "  --kp                                P tuning constant (default: %.2f).\n"
+      "  --kp                                P tuning constant (default: "
+      "%.2f).\n"
       "The loop frequency is fixed at %u Hz.\n",
       program, kDefaultDurationSeconds, kDefaultStartupTimeoutSeconds,
       kDefaultPositionStepPerCycle, kDefaultProportionality, kFrequencyHz);
@@ -229,6 +231,17 @@ bool ParseOptions(int argc, char **argv, Options *options) {
       if (!ParseDouble(argv[i],
                        "position steps per cycle per x_axis 1000 force steps",
                        0.01, 0.5, &options->kp)) {
+        return false;
+      }
+    } else if (arg == "--drag") {
+      if (++i >= argc) {
+        std::fprintf(stderr, "--kp requires a value.\n");
+        return false;
+      }
+      if (!ParseDouble(
+              argv[i],
+              "proportionality between velocity and negative acceleration.",
+              0.00001, 0.5, &options->drag)) {
         return false;
       }
     } else {
@@ -479,7 +492,7 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
                      SampleRecord *records, std::uint64_t max_samples) {
   RunSummary summary{};
   EthercatState state{};
-  DriveLogic drive_logic(options.kp);
+  DriveLogic drive_logic(options.kp, options.drag);
   Clearpath::Command command{};
   unsigned int sync_ref_counter = 0;
   bool recording = false;

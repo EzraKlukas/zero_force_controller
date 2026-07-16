@@ -17,7 +17,7 @@ struct CycleInputs {
 
 class DriveLogic {
 public:
-  explicit DriveLogic(double kp);
+  explicit DriveLogic(double kp, double drag);
 
   void ResetHoldPosition(std::int32_t actual_position);
   bool FindSetPoint(const CycleInputs &inputs);
@@ -32,6 +32,7 @@ private:
   std::int32_t target_x_ = 0;
   std::int32_t rms_delta_x_ = 0;
   double kp_ = 0.0;
+  double drag_ = 0.0;
 
   bool negative_limit_latched_ = false;
   bool positive_limit_latched_ = false;
