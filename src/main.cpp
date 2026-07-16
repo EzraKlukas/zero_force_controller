@@ -141,10 +141,10 @@ void PrintUsage(const char *program) {
       "(default: %.1f).\n"
       "  --position-step-per-cycle <counts>  Optional CSP target-position step "
       "after enablement (default: %d).\n"
-      "\n"
+      "  --kp                                P tuning constant (default: %.2f).\n"
       "The loop frequency is fixed at %u Hz.\n",
       program, kDefaultDurationSeconds, kDefaultStartupTimeoutSeconds,
-      kDefaultPositionStepPerCycle, kFrequencyHz);
+      kDefaultPositionStepPerCycle, kDefaultProportionality, kFrequencyHz);
 }
 
 bool ParseDouble(const char *text, const char *name, double min_value,
@@ -479,7 +479,7 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
                      SampleRecord *records, std::uint64_t max_samples) {
   RunSummary summary{};
   EthercatState state{};
-  DriveLogic drive_logic(options.position_step_per_cycle);
+  DriveLogic drive_logic(options.kp);
   Clearpath::Command command{};
   unsigned int sync_ref_counter = 0;
   bool recording = false;
