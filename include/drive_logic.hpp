@@ -21,11 +21,13 @@ public:
 
   void ResetHoldPosition(std::int32_t actual_position);
   bool FindSetPoint(const CycleInputs &inputs);
+  bool LimitSwitchCheck(const CycleInputs &inputs);
   void CalculateNextCommand(const CycleInputs &inputs,
                             Clearpath::Command *command);
 
 private:
-  std::int32_t position_step_per_cycle_ = 0;
+  std::int32_t default_step_per_cycle_ = 0;
+  std::int32_t next_position_step_ = 0;
   std::int32_t target_position_ = 0;
   std::int32_t target_x_ = 0;
   std::int32_t rms_delta_x_ = 0;

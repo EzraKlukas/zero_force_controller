@@ -2,12 +2,11 @@
 #include <cmath>
 #include <format>
 #include <iostream>
-#include <set>
 
 #include "cia402.hpp"
 
 DriveLogic::DriveLogic(std::int32_t position_step_per_cycle)
-    : position_step_per_cycle_(position_step_per_cycle) {}
+    : default_step_per_cycle_(position_step_per_cycle) {}
 
 void DriveLogic::ResetHoldPosition(std::int32_t actual_position) {
   target_position_ = actual_position;
@@ -34,8 +33,7 @@ bool DriveLogic::FindSetPoint(const CycleInputs &inputs) {
   return true;
 }
 
-void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
-                                      Clearpath::Command *command) {
+bool DriveLogic::LimitSwitchCheck(const CycleInputs &inputs) {
   const bool negative_limit = inputs.motor.negative_limit_reached();
   const bool positive_limit = inputs.motor.positive_limit_reached();
 
@@ -50,19 +48,33 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   // Reverse only when moving into the asserted limit, and only once
   // per assertion. Note that positive position_step_per_cycle corresponds to
   // downward motion of the load cell.
-  if (position_step_per_cycle_ < 0 && negative_limit &&
-      !negative_limit_latched_) {
-    position_step_per_cycle_ = -position_step_per_cycle_;
+  if (next_position_step_ < 0 && negative_limit && !negative_limit_latched_) {
+    next_position_step_ = -next_position_step_;
     negative_limit_latched_ = true;
+    return true;
   }
 
-  if (position_step_per_cycle_ > 0 && positive_limit &&
-      !positive_limit_latched_) {
-    position_step_per_cycle_ = -position_step_per_cycle_;
+  if (next_position_step_ > 0 && positive_limit && !positive_limit_latched_) {
+    next_position_step_ = -next_position_step_;
     positive_limit_latched_ = true;
+    return true;
+  }
+  return false;
+}
+
+void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
+                                      Clearpath::Command *command) {
+  if (!LimitSwitchCheck(inputs)) {
+    const auto delta_x = inputs.force.x.raw_sample - target_x_;
+    if (std::abs(delta_x) > (5 * rms_delta_x_)) {
+      next_position_step_ = std::signbit(delta_x) ? default_step_per_cycle_
+                                                  : -default_step_per_cycle_;
+    } else {
+      next_position_step_ = 0;
+    }
   }
 
-  target_position_ += position_step_per_cycle_;
+  target_position_ += next_position_step_;
 
   command->controlword = CiA402::kControlwordEnableOperation;
   command->mode_op = CiA402::kModeCsp;
