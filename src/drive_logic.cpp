@@ -1,5 +1,7 @@
 #include "drive_logic.hpp"
 #include <cmath>
+#include <format>
+#include <iostream>
 #include <set>
 
 #include "cia402.hpp"
@@ -21,10 +23,12 @@ bool DriveLogic::FindSetPoint(const CycleInputs &inputs) {
   } else if (inputs.sample_index < 2 * setpoint_sample_size) {
     // measuring variance
     int32_t delta = inputs.force.x.raw_sample - target_x_;
-    rms_x_ += delta * delta;
+    rms_delta_x_ += delta * delta;
     return false;
   } else if (inputs.sample_index == 2 * setpoint_sample_size) {
-    rms_x_ = std::sqrt((double)rms_x_);
+    rms_delta_x_ = std::sqrt((double)rms_delta_x_);
+    std::cout << std::format("target_x_: {}, rms_delta_x: {}", target_x_,
+                             rms_delta_x_);
   }
   return true;
 }

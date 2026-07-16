@@ -28,7 +28,7 @@ private:
   std::int32_t position_step_per_cycle_ = 0;
   std::int32_t target_position_ = 0;
   std::int32_t target_x_ = 0;
-  std::int32_t rms_x_ = 0;
+  std::int32_t rms_delta_x_ = 0;
 
   bool negative_limit_latched_ = false;
   bool positive_limit_latched_ = false;
