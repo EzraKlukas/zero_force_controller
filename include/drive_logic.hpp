@@ -5,6 +5,8 @@
 #include "clearpath_pdo.hpp"
 #include "elm3604_pdo.hpp"
 
+inline constexpr std::size_t setpoint_sample_size = 1000;
+
 struct CycleInputs {
   Elm3604::Feedback force;
   Clearpath::PDO::TxPDOs motor;
@@ -18,12 +20,15 @@ public:
   explicit DriveLogic(std::int32_t position_step_per_cycle);
 
   void ResetHoldPosition(std::int32_t actual_position);
+  bool FindSetPoint(const CycleInputs &inputs);
   void CalculateNextCommand(const CycleInputs &inputs,
                             Clearpath::Command *command);
 
 private:
   std::int32_t position_step_per_cycle_ = 0;
   std::int32_t target_position_ = 0;
+  std::int32_t target_x_ = 0;
+  std::int32_t rms_x_ = 0;
 
   bool negative_limit_latched_ = false;
   bool positive_limit_latched_ = false;

@@ -513,7 +513,9 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
 
       const CycleInputs inputs{elm, motor, summary.samples,
                                TimespecToNs(deadline), latency_ns};
-      drive_logic.CalculateNextCommand(inputs, &command);
+      if (drive_logic.FindSetPoint(inputs)) {
+        drive_logic.CalculateNextCommand(inputs, &command);
+      }
     }
 
     EndCycle(ctx, command, &sync_ref_counter);
@@ -790,8 +792,8 @@ int main(int argc, char **argv) {
     std::printf("Configuring ELM3604 X1-X3 TxPDOs 0x%04X-0x%04X.\n",
                 Elm3604::kChannel1StatusTxPdo, Elm3604::kChannel3SampleTxPdo);
     if (!Elm3604::ConfigureStartupSdos(ctx.elm3604_config)) {
-        exit_code = 1;
-        break;
+      exit_code = 1;
+      break;
     }
     if (!Elm3604::ConfigurePDOs(ctx.elm3604_config)) {
       exit_code = 1;
@@ -807,13 +809,9 @@ int main(int argc, char **argv) {
     constexpr std::int32_t kElmSync0ShiftNs = 0;
     constexpr std::uint32_t kElmSync1DelayNs = 20'000;
 
-    ecrt_slave_config_dc(
-            ctx.elm3604_config,
-            kElmDcAssignActivate,
-            kElmSync0CycleNs,
-            kElmSync0ShiftNs,
-            kElmSync1DelayNs,
-            0);
+    ecrt_slave_config_dc(ctx.elm3604_config, kElmDcAssignActivate,
+                         kElmSync0CycleNs, kElmSync0ShiftNs, kElmSync1DelayNs,
+                         0);
 
     std::printf("Configuring ClearPath CSP PDOs and distributed clocks.\n");
     try {
