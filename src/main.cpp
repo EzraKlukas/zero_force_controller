@@ -31,6 +31,7 @@ constexpr unsigned int kFrequencyHz = 1000;
 constexpr double kDefaultDurationSeconds = 60.0;
 constexpr double kDefaultStartupTimeoutSeconds = 20.0;
 constexpr std::int32_t kDefaultPositionStepPerCycle = 0;
+constexpr double kDefaultProportionality = 0;
 constexpr unsigned int kExpectedSlaveCount = 3;
 constexpr int kRealtimePriority = 50;
 constexpr std::size_t kMaxSafeStack = 8U * 1024U;
@@ -51,6 +52,7 @@ struct Options {
   double startup_timeout_seconds = kDefaultStartupTimeoutSeconds;
   std::string output_path = "combined_capture.csv";
   std::int32_t position_step_per_cycle = kDefaultPositionStepPerCycle;
+  double kp = kDefaultProportionality;
   bool help = false;
 };
 
@@ -219,6 +221,16 @@ bool ParseOptions(int argc, char **argv, Options *options) {
                       &options->position_step_per_cycle)) {
         return false;
       }
+    } else if (arg == "--kp") {
+      if (++i >= argc) {
+        std::fprintf(stderr, "--kp requires a value.\n");
+        return false;
+      }
+      if (!ParseDouble(argv[i],
+                       "position steps per cycle per x_axis 1000 force steps",
+                       0.01, 0.5, &options->kp)) {
+        return false;
+      }
     } else {
       std::fprintf(stderr, "Unknown option '%s'. Use --help.\n", arg.c_str());
       return false;
@@ -327,29 +339,19 @@ void PollStates(const RuntimeContext &ctx, const Clearpath::PDO::TxPDOs &motor,
   state->last_motor_feedback = motor;
 }
 
-bool ElmChannelValid(const Elm3604::Channel& channel) {
-  return channel.number_of_samples > 0U &&
-         !channel.txpdo_state &&
+bool ElmChannelValid(const Elm3604::Channel &channel) {
+  return channel.number_of_samples > 0U && !channel.txpdo_state &&
          !channel.error;
 }
 
-
-bool ReadyToRecord(const EthercatState& state,
-                   const Elm3604::Feedback& elm) {
-  return state.have_master &&
-         state.have_domain &&
-         state.have_elm3604 &&
-         state.have_clearpath &&
-         state.master.link_up &&
+bool ReadyToRecord(const EthercatState &state, const Elm3604::Feedback &elm) {
+  return state.have_master && state.have_domain && state.have_elm3604 &&
+         state.have_clearpath && state.master.link_up &&
          state.master.slaves_responding == kExpectedSlaveCount &&
-         state.domain.wc_state == EC_WC_COMPLETE &&
-         state.elm3604.online &&
-         state.elm3604.operational &&
-         state.clearpath.online &&
-         state.clearpath.operational &&
-         state.drive_operation_enabled_csp &&
-         ElmChannelValid(elm.x) &&
-         ElmChannelValid(elm.y) &&
+         state.domain.wc_state == EC_WC_COMPLETE && state.elm3604.online &&
+         state.elm3604.operational && state.clearpath.online &&
+         state.clearpath.operational && state.drive_operation_enabled_csp &&
+         ElmChannelValid(elm.x) && ElmChannelValid(elm.y) &&
          ElmChannelValid(elm.z);
 }
 
@@ -539,15 +541,15 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
 
     const bool ready = ReadyToRecord(state, elm);
     if (!recording) {
-        if (ready) {
-            recording = true;
-        } else if (actual_ns - startup_start_ns >= startup_timeout_ns) {
-            summary.startup_timeout = true;
-            break;
-        }
-    } else if (!ready) {
-        summary.communication_lost = true;
+      if (ready) {
+        recording = true;
+      } else if (actual_ns - startup_start_ns >= startup_timeout_ns) {
+        summary.startup_timeout = true;
         break;
+      }
+    } else if (!ready) {
+      summary.communication_lost = true;
+      break;
     }
 
     if (recording && summary.samples < max_samples) {

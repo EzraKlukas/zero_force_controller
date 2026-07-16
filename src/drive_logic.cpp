@@ -5,8 +5,7 @@
 
 #include "cia402.hpp"
 
-DriveLogic::DriveLogic(std::int32_t position_step_per_cycle)
-    : default_step_per_cycle_(position_step_per_cycle) {}
+DriveLogic::DriveLogic(double kp) : kp_(kp) {}
 
 void DriveLogic::ResetHoldPosition(std::int32_t actual_position) {
   target_position_ = actual_position;
@@ -67,10 +66,7 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   if (!LimitSwitchCheck(inputs)) {
     const auto delta_x = inputs.force.x.raw_sample - target_x_;
     if (std::abs(delta_x) > (5 * rms_delta_x_)) {
-      double ratio = static_cast<double>(delta_x) / 200000.0;
-      ratio = std::clamp(ratio, -1.0, 1.0);
-      next_position_step_ =
-          static_cast<int32_t>(ratio * default_step_per_cycle_);
+      next_position_step_ = static_cast<int32_t>(kp_ / 1000.0 * delta_x);
     } else {
       next_position_step_ = 0;
     }
