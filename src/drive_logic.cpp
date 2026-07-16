@@ -26,8 +26,9 @@ bool DriveLogic::FindSetPoint(const CycleInputs &inputs) {
     rms_delta_x_ += delta * delta;
     return false;
   } else if (inputs.sample_index == 2 * setpoint_sample_size) {
+    rms_delta_x_ /= setpoint_sample_size;
     rms_delta_x_ = std::sqrt((double)rms_delta_x_);
-    std::cout << std::format("target_x_: {}, rms_delta_x: {}", target_x_,
+    std::cout << std::format("target_x_: {}, rms_delta_x: {}\n", target_x_,
                              rms_delta_x_);
   }
   return true;

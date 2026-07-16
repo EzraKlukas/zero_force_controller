@@ -29,7 +29,7 @@ namespace {
 constexpr std::uint64_t kNsecPerSec = 1000000000ULL;
 constexpr unsigned int kFrequencyHz = 1000;
 constexpr double kDefaultDurationSeconds = 60.0;
-constexpr double kDefaultStartupTimeoutSeconds = 15.0;
+constexpr double kDefaultStartupTimeoutSeconds = 20.0;
 constexpr std::int32_t kDefaultPositionStepPerCycle = 0;
 constexpr unsigned int kExpectedSlaveCount = 3;
 constexpr int kRealtimePriority = 50;
@@ -42,6 +42,7 @@ constexpr std::uint32_t kEk1100ProductCode = 0x044c2c52;
 constexpr unsigned int kShutdownHoldCycles = 20;
 constexpr unsigned int kShutdownCycles = 50;
 constexpr unsigned int kDisableVoltageCycles = 50;
+constexpr unsigned int kRequiredReadyCycles = 100;
 
 volatile std::sig_atomic_t g_stop_requested = 0;
 
@@ -326,14 +327,30 @@ void PollStates(const RuntimeContext &ctx, const Clearpath::PDO::TxPDOs &motor,
   state->last_motor_feedback = motor;
 }
 
-bool ReadyToRecord(const EthercatState &state) {
-  return state.have_master && state.have_domain && state.have_elm3604 &&
-         state.have_clearpath && state.master.link_up &&
+bool ElmChannelValid(const Elm3604::Channel& channel) {
+  return channel.number_of_samples > 0U &&
+         !channel.txpdo_state &&
+         !channel.error;
+}
+
+
+bool ReadyToRecord(const EthercatState& state,
+                   const Elm3604::Feedback& elm) {
+  return state.have_master &&
+         state.have_domain &&
+         state.have_elm3604 &&
+         state.have_clearpath &&
+         state.master.link_up &&
          state.master.slaves_responding == kExpectedSlaveCount &&
-         (state.master.al_states & EC_AL_STATE_OP) != 0 &&
-         state.domain.wc_state == EC_WC_COMPLETE && state.elm3604.online &&
-         state.elm3604.operational && state.clearpath.online &&
-         state.clearpath.operational && state.drive_operation_enabled_csp;
+         state.domain.wc_state == EC_WC_COMPLETE &&
+         state.elm3604.online &&
+         state.elm3604.operational &&
+         state.clearpath.online &&
+         state.clearpath.operational &&
+         state.drive_operation_enabled_csp &&
+         ElmChannelValid(elm.x) &&
+         ElmChannelValid(elm.y) &&
+         ElmChannelValid(elm.z);
 }
 
 void PrintReadinessSummary(const EthercatState &state) {
@@ -520,17 +537,17 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
 
     EndCycle(ctx, command, &sync_ref_counter);
 
-    const bool ready = ReadyToRecord(state);
+    const bool ready = ReadyToRecord(state, elm);
     if (!recording) {
-      if (ready) {
-        recording = true;
-      } else if (actual_ns - startup_start_ns >= startup_timeout_ns) {
-        summary.startup_timeout = true;
-        break;
-      }
+        if (ready) {
+            recording = true;
+        } else if (actual_ns - startup_start_ns >= startup_timeout_ns) {
+            summary.startup_timeout = true;
+            break;
+        }
     } else if (!ready) {
-      summary.communication_lost = true;
-      break;
+        summary.communication_lost = true;
+        break;
     }
 
     if (recording && summary.samples < max_samples) {
