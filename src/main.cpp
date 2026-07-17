@@ -47,6 +47,8 @@ constexpr unsigned int kDisableVoltageCycles = 50;
 
 volatile std::sig_atomic_t g_stop_requested = 0;
 
+bool limitSwitchHit = false;
+
 struct Options {
   double duration_seconds = kDefaultDurationSeconds;
   double startup_timeout_seconds = kDefaultStartupTimeoutSeconds;
@@ -546,7 +548,14 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
       const CycleInputs inputs{elm, motor, summary.samples,
                                TimespecToNs(deadline), latency_ns};
       if (drive_logic.FindSetPoint(inputs)) {
-        drive_logic.CalculateNextCommand(inputs, &command);
+        if (!limitSwitchHit) {
+          limitSwitchHit = drive_logic.LimitSwitchCheck(inputs);
+        }
+        if (!limitSwitchHit) {
+          drive_logic.CalculateNextCommand(inputs, &command);
+        } else {
+          drive_logic.ReturnHome(inputs, &command);
+        }
       }
     }
 

@@ -24,6 +24,7 @@ public:
   bool LimitSwitchCheck(const CycleInputs &inputs);
   void CalculateNextCommand(const CycleInputs &inputs,
                             Clearpath::Command *command);
+  bool ReturnHome(const CycleInputs &inputs, Clearpath::Command *command);
 
 private:
   std::int32_t next_position_step_ = 0;
@@ -36,4 +37,6 @@ private:
 
   bool negative_limit_latched_ = false;
   bool positive_limit_latched_ = false;
+
+  std::int32_t initial_position_ = 0;
 };
