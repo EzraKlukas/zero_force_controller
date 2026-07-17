@@ -1,3 +1,9 @@
+// CiA-402 enable-state implementation for ClearPath CSP operation.
+//
+// This file contains only drive-state interpretation and controlword selection.
+// It does not touch EtherCAT process data directly; callers provide decoded
+// ClearPath feedback and receive an updated command structure.
+
 #include "cia402.hpp"
 
 namespace CiA402 {
@@ -41,6 +47,8 @@ bool IsOperationEnabledCSP(const Clearpath::PDO::TxPDOs &feedback) {
 
 bool ReachOp(const Clearpath::PDO::TxPDOs &feedback,
              Clearpath::Command *command) {
+  // Advance one conservative step at a time. The next cyclic exchange will
+  // observe the resulting statusword before issuing the following transition.
   switch (DecodeStatusword(feedback.statusword)) {
   case State::Fault:
     command->controlword = kControlwordFaultReset;
@@ -84,6 +92,8 @@ bool UpdateCSPEnableState(const Clearpath::PDO::TxPDOs &feedback,
   const bool op_enabled = ReachOp(feedback, command);
 
   if (!op_enabled || feedback.mode_display != kModeCsp) {
+    // While the drive is not confirmed in CSP, mirror actual position into the
+    // target so enabling does not command a sudden position step.
     command->target_position = feedback.actual_position;
   }
 

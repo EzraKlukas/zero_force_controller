@@ -1,3 +1,9 @@
+// Beckhoff ELM3604-0002 PDO mapping and process-data access.
+//
+// This module configures the X1-X3 status/sample PDOs and decodes their raw
+// process-data representation into Elm3604::Feedback. The decoded sample
+// values are still raw signed counts.
+
 #include "elm3604_pdo.hpp"
 
 #include <cstdio>
@@ -29,6 +35,7 @@ Elm3604::Channel ReadChannel(const std::uint8_t *domain_pd,
                              offsets.diag_bit);
   channel.txpdo_state = EC_READ_BIT(domain_pd + offsets.txpdo_state_offset,
                                     offsets.txpdo_state_bit);
+  // The input-cycle counter is a two-bit field inside a packed status byte.
   const std::uint8_t packed_counter =
       EC_READ_U8(domain_pd + offsets.cycle_counter_offset);
   channel.input_cycle_counter = static_cast<std::uint8_t>(
@@ -40,6 +47,8 @@ Elm3604::Channel ReadChannel(const std::uint8_t *domain_pd,
 } // namespace
 
 bool Elm3604::ConfigurePDOs(ec_slave_config_t *sc) {
+  // The ELM3604 PDO indexes are sparse by channel in the Beckhoff object
+  // dictionary. Keep these entries aligned with the constants in the header.
   ec_pdo_entry_info_t elm3604_pdo_entries[] = {
       // 0x1A00: PAI TxPDO-Map Status Ch.1
       {0x6000, 0x01, 8},  // No of Samples
@@ -112,6 +121,8 @@ bool Elm3604::ConfigurePDOs(ec_slave_config_t *sc) {
 
 bool Elm3604::RegisterPDOEntries(ec_domain_t *domain,
                                  Elm3604::PdoOffsets *offsets) {
+  // Register each status bit and sample object separately so the cyclic loop
+  // can decode channel health along with the raw sample value.
   const ec_pdo_entry_reg_t domain_regs[] = {
       {kAlias, kPosition, kVendorId, kProductCode, kChannel1StatusObject,
        kNumberOfSamplesSubindex, &offsets->x.number_of_samples_offset,
@@ -220,6 +231,8 @@ bool Elm3604::ConfigureStartupSdos(ec_slave_config_t* sc) {
       0x8020,  // X3
   };
 
+  // These SDOs describe the analog input electrical mode only. They do not
+  // calibrate the load cell or convert raw samples into force units.
   constexpr std::uint16_t kInterfaceZeroToTenVolts = 108;
   constexpr std::uint16_t kDcCoupling = 0;
   constexpr std::uint8_t kIepeCurrentOff = 0;

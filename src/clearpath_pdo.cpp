@@ -1,3 +1,10 @@
+// ClearPath EC PDO mapping and process-data access.
+//
+// RemapPDOs() selects the compact CSP PDO set used by the controller.
+// ConfigurePDOOffsets() registers those entries with the IgH domain.
+// ReadTxPDOs()/WriteCommand() are the only places that read/write raw
+// process-data memory for the ClearPath drive.
+
 #include "clearpath_pdo.hpp"
 
 #include <stdexcept>
@@ -44,6 +51,9 @@ void Clearpath::RemapPDOs(ec_slave_config_t *sc) {
     throw std::runtime_error("Clearpath::RemapPDOs: null slave config");
   }
 
+  // RxPDO 0x1600: position-mode command path. Target velocity and target
+  // torque are mapped for visibility/explicit zeroing even though this
+  // checkpoint drives target position.
   static ec_pdo_entry_info_t rx_entries[] = {
       {0x6040, 0x00, 16}, // Controlword
       {0x6060, 0x00, 8},  // Modes of operation
@@ -52,6 +62,8 @@ void Clearpath::RemapPDOs(ec_slave_config_t *sc) {
       {0x6071, 0x00, 16}, // Target torque
   };
 
+  // TxPDO 0x1A00: status, motion feedback, and digital inputs. Limit
+  // interpretation is handled by Clearpath::PDO::TxPDOs helpers.
   static ec_pdo_entry_info_t tx_entries[] = {
       {0x6041, 0x00, 16}, // Statusword
       {0x6061, 0x00, 8},  // Modes of operation display

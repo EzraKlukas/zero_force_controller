@@ -1,3 +1,9 @@
+// Beckhoff ELM3604-0002 PDO contract used by zero_force_controller.
+//
+// The three configured channels are treated as X/Y/Z load-cell axes. Samples
+// remain signed 32-bit raw PDO counts at this layer; no voltage or force-unit
+// conversion is performed here.
+
 #pragma once
 
 #include <cstdint>
@@ -28,6 +34,8 @@ public:
 
   static constexpr std::uint8_t kSampleSubindex = 0x01;
 
+  // Decoded channel status plus the raw signed sample value from the mapped
+  // ELM3604 sample object.
   struct Channel {
     std::int32_t raw_sample = 0;
     std::uint8_t number_of_samples = 0;
@@ -39,12 +47,15 @@ public:
     bool txpdo_state = false;
   };
 
+  // X/Y/Z load-cell channel bundle read once per EtherCAT cycle.
   struct Feedback {
     Channel x;
     Channel y;
     Channel z;
   };
 
+  // IgH byte/bit offsets for one ELM3604 channel. Status bits may be bit
+  // packed; the signed sample is read from sample_offset.
   struct ChannelPdoOffsets {
     unsigned int number_of_samples_offset = 0;
     unsigned int number_of_samples_bit = 0;
@@ -76,9 +87,12 @@ public:
     ChannelPdoOffsets z;
   };
 
+  // Queues startup SDOs for the present electrical setup: 0-10 V, DC-coupled,
+  // IEPE off, no filter, decimation 1, raw extended range off.
   static bool ConfigureStartupSdos(ec_slave_config_t* sc);
   static bool ConfigurePDOs(ec_slave_config_t *sc);
   static bool RegisterPDOEntries(ec_domain_t *domain, PdoOffsets *offsets);
+  // Reads X/Y/Z feedback from process-data memory without unit conversion.
   static Feedback ReadFeedback(const std::uint8_t *domain_pd,
                                const PdoOffsets &offsets);
 };

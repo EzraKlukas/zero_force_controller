@@ -1,3 +1,9 @@
+// ClearPath EC PDO contract used by zero_force_controller.
+//
+// This header declares the fixed slave identity, distributed-clock parameters,
+// mapped RxPDO/TxPDO data, logical limit-bit helpers, and process-data offsets
+// used by the IgH cyclic loop.
+
 #pragma once
 
 #include <cstdint>
@@ -15,6 +21,7 @@ public:
   static constexpr std::uint32_t kSync0ShiftNs = 250000;
 
   struct PDO {
+    // Commands written to RxPDO 0x1600.
     struct RxPDOs {
       std::uint16_t controlword = 0;
       std::int8_t mode_op = 0;
@@ -24,6 +31,9 @@ public:
       std::uint32_t digital_output = 0;
     } rx;
 
+    // Feedback read from TxPDO 0x1A00. The logical limit bits come from the
+    // ClearView-configured limit functions; raw Input A/B bits are retained for
+    // wiring diagnostics and are not used as limit decisions.
     struct TxPDOs {
       static constexpr std::uint32_t kNegativeLimitReachedMask =
           1U << 0U;
@@ -61,6 +71,7 @@ public:
     } tx;
   };
 
+  // Command type passed through the controller boundary and written to RxPDOs.
   struct Command {
     std::uint16_t controlword = 0;
     std::int8_t mode_op = 0;
@@ -69,6 +80,8 @@ public:
     std::int16_t target_torque = 0;
   };
 
+  // Byte offsets returned by IgH PDO registration. Negative values indicate an
+  // unregistered entry before ConfigurePDOOffsets() completes.
   struct PdoOffsets {
     struct RxPDOs {
       int controlword = -1;

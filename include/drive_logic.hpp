@@ -1,3 +1,10 @@
+// Raw-count zero-force control policy.
+//
+// This header defines the typed boundary between the EtherCAT loop and the
+// controller. DriveLogic consumes already-decoded ELM3604 feedback plus
+// ClearPath feedback and emits a ClearPath command. It deliberately does not
+// know about IgH masters, domains, PDO offsets, or process-data memory.
+
 #pragma once
 
 #include <cstdint>
@@ -7,6 +14,9 @@
 
 inline constexpr std::size_t setpoint_sample_size = 1000;
 
+// Per-cycle inputs passed from the EtherCAT loop into DriveLogic. Force samples
+// are ELM3604 raw signed counts; motor positions and velocities are ClearPath
+// drive counts.
 struct CycleInputs {
   Elm3604::Feedback force;
   Clearpath::PDO::TxPDOs motor;
@@ -15,23 +25,41 @@ struct CycleInputs {
   std::int64_t wakeup_latency_ns = 0;
 };
 
+// Implements the current physical checkpoint controller:
+// 1. learn a raw X-axis baseline,
+// 2. estimate raw X-axis noise,
+// 3. convert raw-count error into motor-count acceleration with an empirical
+//    gain,
+// 4. damp and accumulate that into target-position increments,
+// 5. return home after a logical limit hit.
 class DriveLogic {
 public:
   explicit DriveLogic(double kp, double drag);
 
+  // Seeds the target position from the actual position once CSP is enabled.
   void ResetHoldPosition(std::int32_t actual_position);
+  // Returns true after the baseline and noise windows have completed.
   bool FindSetPoint(const CycleInputs &inputs);
+  // Handles logical ClearPath limit bits and latches each assertion once.
   bool LimitSwitchCheck(const CycleInputs &inputs);
+  // Calculates the next normal balancing command in raw-count/motor-count
+  // units. No SI-unit conversion is performed here.
   void CalculateNextCommand(const CycleInputs &inputs,
                             Clearpath::Command *command);
+  // Commands motion back toward the post-setpoint initial position.
   bool ReturnHome(const CycleInputs &inputs, Clearpath::Command *command);
 
 private:
+  // Accumulated motor-count step, treated like velocity in the raw-count
+  // controller model.
   std::int32_t next_position_step_ = 0;
+  // Per-cycle change in next_position_step_, treated like acceleration.
   std::int32_t next_velocity_step_ = 0;
   std::int32_t target_position_ = 0;
+  // Raw ELM X-axis baseline and RMS raw-count noise estimate.
   std::int32_t target_x_ = 0;
   std::int32_t rms_delta_x_ = 0;
+  // Empirical tuning parameters, not physical SI gains.
   double kp_ = 0.0;
   double drag_ = 0.0;
 

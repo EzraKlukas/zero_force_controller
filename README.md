@@ -1,19 +1,45 @@
 # zero_force_controller
 
-C++20 IgH userspace bring-up and acquisition application for a combined
-EK1100, ELM3604-0002, and ClearPath EC EtherCAT topology. The current scope is
-integrated communication: read three-dimensional force-channel data from
-ELM3604 X1-X3, read ClearPath feedback and switch states, enable the ClearPath
-in CSP, command a valid CSP hold target by default, optionally step the target
-position with limit-switch reversal, and write one combined CSV after shutdown.
+C++20 IgH userspace EtherCAT application for the current `ezra-zfc` zero-force
+control checkpoint. The controller has reached a useful physical milestone:
+with the verified EK1100, ELM3604-0002, ClearPath EC, load-cell, and limit
+switch setup, the system can balance the measured raw load-cell signal well in
+practice.
 
-This is not a force controller yet. It does not implement force control, PID,
-impedance or admittance control, filtering, load-cell calibration, or
-conversion to physical units.
+This checkpoint is intentionally not an SI-unit force controller yet. The
+ELM3604 samples are still raw signed 32-bit PDO counts, the load cell has not
+been calibrated into engineering units here, and the ClearPath commands are
+still motor position/count increments rather than calibrated forces applied to
+the load cell. Treat the current controller gains as empirical raw-count to
+motor-count tuning parameters for the present hardware setup.
 
-## Topology
+## Current Behavior
 
-Verified target topology:
+The application:
+
+- configures one EtherCAT master and one process-data domain for EK1100,
+  ELM3604-0002, and ClearPath EC;
+- reads three ELM3604 channels from X1-X3 as raw signed 32-bit samples;
+- enables the ClearPath drive in Cyclic Synchronous Position mode;
+- captures a startup raw X-axis baseline over 1000 samples;
+- estimates the raw X-axis noise level over the next 1000 samples;
+- commands position increments proportional to raw X-axis deviation outside
+  that noise band;
+- applies a simple drag term to damp the accumulated motor-count velocity;
+- reverses/returns when a configured ClearPath logical limit is reached;
+- writes a combined CSV after shutdown.
+
+The control path is therefore:
+
+```text
+ELM3604 raw X count -> raw-count baseline error -> motor-count acceleration
+                    -> damped motor-count step -> ClearPath target position
+```
+
+No conversion is performed from raw ADC/load-cell counts to newtons, and no
+conversion is performed from ClearPath target position/counts to applied force.
+
+## Verified Topology
 
 ```text
 0:0  EK1100
@@ -29,13 +55,14 @@ Verified target topology:
      product 0x00000001
 ```
 
-The application uses one EtherCAT master and one process-data domain for all
-three slaves.
+The readiness gate expects exactly these three slaves, with the master link up,
+the process-data domain complete, both slave configs online and operational,
+the ClearPath drive Operation Enabled, CSP displayed, and valid ELM samples.
 
 ## ELM3604 X1-X3
 
 X1/channel 1, X2/channel 2, and X3/channel 3 are configured for the three load
-cell axes. The ELM PDO assignment is intentionally limited to:
+cell axes. The application maps:
 
 ```text
 TxPDO 0x1A00: channel-1 status
@@ -44,96 +71,86 @@ TxPDO 0x1A21: channel-2 status
 TxPDO 0x1A22: channel-2 sample
 TxPDO 0x1A42: channel-3 status
 TxPDO 0x1A43: channel-3 sample
-sample objects: X=0x6001:01, Y=0x6011:01, Z=0x6021:01, signed 32-bit
-```
 
-The CSV stores each sample as the unmodified signed 32-bit raw PDO value. No
-voltage, force, alignment, sign-extension, or engineering-unit conversion is
-inferred.
+sample objects:
+  X = 0x6001:01
+  Y = 0x6011:01
+  Z = 0x6021:01
+  type = signed 32-bit raw PDO
+```
 
 Startup SDOs configure X1-X3 as 0-10 V, DC-coupled inputs with IEPE current
 off, no filter, decimation 1, and raw extended range off. Electrical
-compatibility with the load cell or its signal conditioner must be verified
-separately.
+compatibility with the load cell or its signal conditioner must still be
+verified separately from this software.
 
 ## ClearPath CSP
 
-The ClearPath PDO mapping, CiA-402 enable sequence, and distributed-clock setup
-are adapted from the working motor project. The ClearPath DC configuration is:
+The ClearPath PDO mapping provides:
 
 ```text
-AssignActivate: 0x0300
-SYNC0 cycle:    1000000 ns
-SYNC0 shift:    250000 ns
-SYNC1:          disabled
+RxPDO 0x1600:
+  0x6040:00 controlword
+  0x6060:00 mode of operation
+  0x607A:00 target position
+  0x60FF:00 target velocity
+  0x6071:00 target torque
+
+TxPDO 0x1A00:
+  0x6041:00 statusword
+  0x6061:00 mode display
+  0x6064:00 actual position
+  0x606C:00 actual velocity
+  0x6077:00 actual torque
+  0x60FD:00 digital inputs
 ```
 
-The loop waits until the link is up, exactly three slaves respond, the master
-reports OP, the domain working counter is complete, the ELM3604 and ClearPath
-configs are online and operational, the drive is Operation Enabled, and the
-ClearPath mode display is CSP.
+Distributed-clock settings:
 
-After CSP enablement, the initial target position is seeded from actual
-position. By default the application holds that position and commands zero
-target velocity and zero target torque.
+```text
+ClearPath AssignActivate: 0x0300
+ClearPath SYNC0 cycle:    1000000 ns
+ClearPath SYNC0 shift:    250000 ns
+ClearPath SYNC1:          disabled
 
-The custom ClearPath TxPDO `0x1A00` also includes `0x60FD:00`, the unsigned
-32-bit digital input word. `CycleInputs::motor` exposes the configured logical
-limit states through `negative_limit_reached()` and
-`positive_limit_reached()`. It also exposes `raw_input_a_line_on()` and
-`raw_input_b_line_on()` for wiring diagnostics. Raw A/B line states are not
-used as logical limits because they do not include the ClearView limit mapping
-or inversion.
-
-ClearView 3.0 must separately map physical Input A to the negative limit and
-physical Input B to the positive limit, with inversion configured for the
-chosen normally-open or normally-closed wiring. `DriveLogic` listens to those
-logical limit states. When `--position-step-per-cycle` is nonzero, it reverses
-the step direction once when moving into an asserted limit, then rearms that
-limit after the switch is released. With the default zero step, switch states
-are still captured but no commanded motion is generated. The ClearPath drive's
-configured limit response and this software reversal are not substitutes for a
-safety-rated emergency stop or STO implementation.
-
-Use `--position-step-per-cycle <counts>` to run the bounded motion test.
-Positive and negative values are accepted, and stepping starts only after
-Operation Enabled with CSP mode displayed. Positive values correspond to
-downward motion of the load cell in the current setup.
-
-On SIGINT, SIGTERM, timeout, or duration completion, the application stops
-incrementing, holds the current target, keeps velocity and torque commands at
-zero, sends a bounded shutdown/disable command sequence for several more
-process-data exchanges, then releases the master. This is not an emergency-stop
-implementation.
-
-## Control Insertion Point
-
-`DriveLogic` receives only typed data:
-
-```cpp
-struct CycleInputs {
-  Elm3604::Feedback force;
-  Clearpath::PDO::TxPDOs motor;
-  std::uint64_t sample_index;
-  std::uint64_t scheduled_time_ns;
-  std::int64_t wakeup_latency_ns;
-};
+ELM3604 AssignActivate:   0x0700
+ELM3604 SYNC0 cycle:      1000000 ns
+ELM3604 SYNC1 delay:      20000 ns
 ```
 
-It updates a typed `Clearpath::Command`. It does not receive `ec_master_t`,
-`ec_domain_t`, process-data memory, or raw PDO offsets.
+After CSP enablement, the first target position is seeded from actual position
+to avoid a jump.
+
+## Limit Switches
+
+The ClearPath digital input word exposes both logical limit states and raw
+Input A/B line states:
+
+- logical negative limit: bit 0
+- logical positive limit: bit 1
+- raw Input A line: bit 16
+- raw Input B line: bit 17
+
+ClearView 3.0 must map physical Input A/B to the desired negative/positive
+limit functions and configure inversion for the chosen wiring. The software
+uses the logical limit bits for control decisions. Raw A/B bits are captured in
+the CSV for wiring diagnostics only.
+
+When a logical limit is reached during active balancing, the controller stops
+the balancing update and commands a return toward the position captured after
+the raw-count setpoint window. This behavior is a bounded control response, not
+a safety-rated emergency stop or STO implementation.
 
 ## Build
 
-With an installed IgH userspace library, such as `/opt/etherlab` on the
-Jetson:
+With an installed IgH userspace library, such as `/opt/etherlab` on the Jetson:
 
 ```sh
 cmake -S . -B build
 cmake --build build
 ```
 
-For offline host compilation against the supplied IgH source/build tree:
+For offline host compilation against a local IgH source/build tree:
 
 ```sh
 cmake -S . -B build -DIGH_MASTER_ROOT=../igh_general
@@ -151,7 +168,7 @@ link against its own installed ARM64 IgH userspace library.
 
 ## Run On The Jetson
 
-No-motion three-axis acquisition:
+No active balancing, useful for acquisition and checkout:
 
 ```sh
 sudo ./build/zero_force_controller \
@@ -159,13 +176,14 @@ sudo ./build/zero_force_controller \
     --output combined_capture.csv
 ```
 
-Motion test with switch reversal:
+Raw-count zero-force balancing checkpoint:
 
 ```sh
 sudo ./build/zero_force_controller \
-    --duration 10 \
+    --duration 30 \
     --output combined_capture.csv \
-    --position-step-per-cycle 10
+    --kp 0.5 \
+    --drag 0.01
 ```
 
 Supported options:
@@ -176,14 +194,22 @@ Supported options:
 --output <path>
 --startup-timeout <seconds>
 --position-step-per-cycle <counts>
+--kp <raw-count-to-motor-count gain>
+--drag <damping fraction>
 ```
 
-The loop frequency is fixed at 1000 Hz.
+`--position-step-per-cycle` is retained as a parsed/CSV-recorded option from
+earlier bounded motion tests. The current raw-count zero-force control path uses
+`--kp` and `--drag`; it does not use `--position-step-per-cycle` for balancing.
+
+The loop frequency is fixed at 1000 Hz. The cyclic loop records to preallocated
+memory and does not write files until after EtherCAT shutdown.
 
 ## CSV
 
-The output is written only after EtherCAT shutdown. The cyclic loop records to
-preallocated memory and does not write files.
+The output is written only after EtherCAT shutdown. Header lines record the
+topology, requested duration, loop frequency, ClearPath mode, raw ELM sample
+objects, sample count, and timing overrun count.
 
 Columns:
 
@@ -209,3 +235,17 @@ mapping and inversion; if neither raw nor logical bits change, check wiring,
 supply, connector, PDO mapping, and communication; if the logical negative and
 positive bits follow the wrong switches, check the ClearView assignments and
 physical switch assignments.
+
+## SI-Unit Work Remaining
+
+The main remaining translation work is:
+
+- calibrate the load-cell/signal-conditioner/ELM3604 chain from raw counts to
+  force units;
+- establish axis signs and cross-axis coupling/alignment conventions;
+- characterize how commanded ClearPath target-position changes translate into
+  applied load-cell force in the actual mechanism;
+- replace empirical `--kp`/`--drag` tuning with documented physical units or a
+  deliberately unitless controller interface;
+- validate latency, scheduling margin, and shutdown behavior under the final
+  realtime deployment conditions.

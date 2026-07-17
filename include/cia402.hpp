@@ -1,3 +1,9 @@
+// Minimal CiA-402 helpers for bringing the ClearPath drive into CSP.
+//
+// The functions here decode the drive statusword, choose the next controlword
+// in the standard enable sequence, and keep the target position seeded from
+// actual position until Operation Enabled with CSP mode displayed.
+
 #pragma once
 
 #include <cstdint>
@@ -31,6 +37,8 @@ enum class State {
   Unknown,
 };
 
+// Decodes only the states needed by this application from the CiA-402
+// statusword bit patterns.
 State DecodeStatusword(std::uint16_t statusword);
 bool IsOperationEnabled(std::uint16_t statusword);
 bool IsOperationEnabledCSP(const Clearpath::PDO::TxPDOs &feedback);

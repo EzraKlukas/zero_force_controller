@@ -1,3 +1,9 @@
+# Build configuration for zero_force_controller.
+#
+# Finds the IgH EtherCAT userspace library either through an installed
+# EtherCAT CMake package, common install locations, or an explicit
+# IGH_MASTER_ROOT path for host-only compilation.
+
 cmake_minimum_required(VERSION 3.16)
 
 project(zero_force_controller LANGUAGES CXX)

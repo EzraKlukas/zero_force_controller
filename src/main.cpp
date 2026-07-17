@@ -1,3 +1,10 @@
+// zero_force_controller main application.
+//
+// Owns EtherCAT master/domain setup, realtime-ish cyclic scheduling, readiness
+// checks, CSV capture, and bounded shutdown. The physical zero-force behavior
+// lives in DriveLogic; this file keeps that logic isolated from IgH process
+// data pointers and raw PDO offsets.
+
 #include <algorithm>
 #include <cerrno>
 #include <cinttypes>
@@ -45,8 +52,11 @@ constexpr unsigned int kShutdownHoldCycles = 20;
 constexpr unsigned int kShutdownCycles = 50;
 constexpr unsigned int kDisableVoltageCycles = 50;
 
+// Written only by signal handlers and polled by the cyclic loop.
 volatile std::sig_atomic_t g_stop_requested = 0;
 
+// Latched after DriveLogic reports the first active limit response. From that
+// point the loop commands ReturnHome() instead of normal balancing.
 bool limitSwitchHit = false;
 
 struct Options {
@@ -59,6 +69,8 @@ struct Options {
   bool help = false;
 };
 
+// One row of post-run CSV data. The cyclic loop copies raw feedback and the
+// command it just wrote into this preallocated buffer; file IO happens later.
 struct SampleRecord {
   std::uint64_t sample_index;
   std::uint64_t scheduled_time_ns;
@@ -85,6 +97,8 @@ struct SampleRecord {
   std::int16_t motor_target_torque;
 };
 
+// Last observed EtherCAT and drive state, used both as a readiness gate and as
+// diagnostic output if startup or acquisition fails.
 struct EthercatState {
   ec_master_state_t master{};
   ec_domain_state_t domain{};
@@ -98,6 +112,8 @@ struct EthercatState {
   Clearpath::PDO::TxPDOs last_motor_feedback{};
 };
 
+// End-of-run information that determines whether the program reports a normal
+// completion, a startup failure, communication loss, or a signal interruption.
 struct RunSummary {
   std::uint64_t samples = 0;
   std::uint64_t timing_overruns = 0;
@@ -108,6 +124,7 @@ struct RunSummary {
   bool duration_complete = false;
 };
 
+// Small summary calculated while writing CSV, after realtime work is finished.
 struct CsvSummary {
   bool have_samples = false;
   std::int32_t min_x_raw = 0;
@@ -118,6 +135,7 @@ struct CsvSummary {
   std::int32_t max_z_raw = 0;
 };
 
+// Pointers and PDO offsets needed by one process-data cycle.
 struct RuntimeContext {
   ec_master_t *master = nullptr;
   ec_domain_t *domain = nullptr;
@@ -340,6 +358,8 @@ void ConfigureRealtimeBestEffort() {
   }
 }
 
+// Refreshes master/domain/slave states from IgH and caches the latest motor
+// feedback for both readiness checks and failure reporting.
 void PollStates(const RuntimeContext &ctx, const Clearpath::PDO::TxPDOs &motor,
                 EthercatState *state) {
   ecrt_master_state(ctx.master, &state->master);
@@ -359,6 +379,9 @@ bool ElmChannelValid(const Elm3604::Channel &channel) {
          !channel.error;
 }
 
+// Recording starts only after communication, drive state, and ELM sample
+// validity are all true. If any of these become false after recording starts,
+// the run is treated as communication loss.
 bool ReadyToRecord(const EthercatState &state, const Elm3604::Feedback &elm) {
   return state.have_master && state.have_domain && state.have_elm3604 &&
          state.have_clearpath && state.master.link_up &&
@@ -425,6 +448,8 @@ void SyncDistributedClocks(ec_master_t *master,
   ecrt_master_sync_slave_clocks(master);
 }
 
+// Performs the receive/read half of a 1 kHz cycle and measures wakeup latency
+// against the absolute CLOCK_MONOTONIC deadline used by clock_nanosleep().
 void BeginCycle(const RuntimeContext &ctx, const timespec &deadline,
                 Elm3604::Feedback *elm_feedback,
                 Clearpath::PDO::TxPDOs *motor_feedback,
@@ -445,6 +470,8 @@ void BeginCycle(const RuntimeContext &ctx, const timespec &deadline,
       Clearpath::ReadTxPDOs(ctx.domain_data, ctx.clearpath_offsets);
 }
 
+// Performs the write/send half of a cycle after DriveLogic or the CiA-402
+// enable state machine has selected the next command.
 void EndCycle(const RuntimeContext &ctx, const Clearpath::Command &command,
               unsigned int *sync_ref_counter) {
   Clearpath::WriteCommand(ctx.domain_data, ctx.clearpath_offsets, command);
@@ -453,6 +480,9 @@ void EndCycle(const RuntimeContext &ctx, const Clearpath::Command &command,
   ecrt_master_send(ctx.master);
 }
 
+// Bounded, best-effort stop sequence used on normal exit or interruption. This
+// is not an emergency stop; it keeps exchanging process data briefly, holds the
+// current target, requests shutdown, then disables voltage.
 void SendBoundedShutdown(const RuntimeContext &ctx, Clearpath::Command command,
                          std::uint64_t period_ns,
                          unsigned int *sync_ref_counter) {
@@ -490,6 +520,8 @@ void SendBoundedShutdown(const RuntimeContext &ctx, Clearpath::Command command,
   }
 }
 
+// Main 1 kHz EtherCAT loop. All memory used for capture is supplied by the
+// caller; there is no file IO in this loop.
 RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
                      SampleRecord *records, std::uint64_t max_samples) {
   RunSummary summary{};
@@ -545,6 +577,8 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
         hold_seeded = true;
       }
 
+      // DriveLogic uses raw ELM counts and ClearPath motor counts. No SI-unit
+      // calibration or force conversion is applied at this checkpoint.
       const CycleInputs inputs{elm, motor, summary.samples,
                                TimespecToNs(deadline), latency_ns};
       if (drive_logic.FindSetPoint(inputs)) {
