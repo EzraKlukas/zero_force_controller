@@ -232,7 +232,7 @@ bool ParseOptions(int argc, char **argv, Options *options) {
       }
       if (!ParseDouble(argv[i],
                        "position steps per cycle per x_axis 1000 force steps",
-                       0.01, 0.5, &options->kp)) {
+                       0.01, 2.0, &options->kp)) {
         return false;
       }
     } else if (arg == "--drag") {
@@ -243,7 +243,7 @@ bool ParseOptions(int argc, char **argv, Options *options) {
       if (!ParseDouble(
               argv[i],
               "proportionality between velocity and negative acceleration.",
-              0.00001, 0.5, &options->drag)) {
+              0.0000001, 0.5, &options->drag)) {
         return false;
       }
     } else {
@@ -554,7 +554,9 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
         if (!limitSwitchHit) {
           drive_logic.CalculateNextCommand(inputs, &command);
         } else {
-          drive_logic.ReturnHome(inputs, &command);
+          if (drive_logic.ReturnHome(inputs, &command)) { 
+              g_stop_requested = true; 
+          }
         }
       }
     }
