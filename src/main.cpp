@@ -588,10 +588,14 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
         if (!limitSwitchHit) {
           drive_logic.CalculateNextCommand(inputs, &command);
         } else {
-          if (drive_logic.ReturnHome(inputs, &command)) { 
-              g_stop_requested = true; 
+          if (drive_logic.ReturnHome(inputs, &command)) {
+            g_stop_requested = true;
           }
         }
+      }
+
+      if ((inputs.sample_index % 10) == 0) {
+        TelemetryFrame frame = drive_logic.GetTelemetry(inputs);
       }
     }
 

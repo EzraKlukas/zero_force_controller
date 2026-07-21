@@ -17,6 +17,7 @@ set(IGH_MASTER_ROOT "" CACHE PATH
     "Optional path to an IgH EtherCAT master source/build tree for host-only builds")
 
 find_package(EtherCAT CONFIG QUIET)
+find_package(Boost REQUIRED)
 
 if(NOT TARGET EtherLab::ethercat)
     set(_igh_include_hints

@@ -25,6 +25,53 @@ struct CycleInputs {
   std::int64_t wakeup_latency_ns = 0;
 };
 
+enum class ControlPhase : std::uint8_t {
+  enabling,
+  baseline_capture,
+  noise_estimation,
+  balancing,
+  returning_home,
+  stopped,
+  fault
+};
+
+struct ControllerTelemetry {
+  ControlPhase phase{};
+
+  std::int32_t target_x_raw{};
+  std::int32_t noise_rms_raw{};
+  std::int32_t force_error_x_raw{};
+
+  std::int32_t velocity_step_counts{};
+  std::int32_t position_step_counts{};
+  std::int32_t target_position_counts{};
+
+  double kp{};
+  double drag{};
+
+  bool negative_limit_latched{};
+  bool positive_limit_latched{};
+};
+
+struct TelemetryFrame {
+  std::uint64_t sequence{};
+  std::uint64_t sample_index{};
+  std::uint64_t source_monotonic_ns{};
+  std::int64_t wakeup_latency_ns{};
+  std::uint64_t timing_overruns{};
+
+  Elm3604::Feedback analog{};
+  Clearpath::PDO::TxPDOs motor{};
+  Clearpath::Command command{};
+  ControllerTelemetry telemetry{};
+
+  bool ethercat_ready{};
+  bool communication_lost{};
+
+  std::uint64_t last_applied_command_id{};
+  std::int32_t last_command_result{};
+};
+
 // Implements the current physical checkpoint controller:
 // 1. learn a raw X-axis baseline,
 // 2. estimate raw X-axis noise,
@@ -48,6 +95,9 @@ public:
                             Clearpath::Command *command);
   // Commands motion back toward the post-setpoint initial position.
   bool ReturnHome(const CycleInputs &inputs, Clearpath::Command *command);
+
+  // emitter for ROS2 to buffer and publish at lower priority and frequency.
+  TelemetryFrame GetTelemetry(const CycleInputs &inputs) const noexcept;
 
 private:
   // Accumulated motor-count step, treated like velocity in the raw-count
