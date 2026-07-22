@@ -27,6 +27,7 @@ The application:
   that noise band;
 - applies a simple drag term to damp the accumulated motor-count velocity;
 - reverses/returns when a configured ClearPath logical limit is reached;
+- publishes decimated in-process telemetry to a non-realtime consumer thread;
 - writes a combined CSV after shutdown.
 
 The control path is therefore:
@@ -160,6 +161,9 @@ cmake --build build
 Do not copy host-built IgH libraries to the ARM64 Jetson. The Jetson should
 link against its own installed ARM64 IgH userspace library.
 
+The executable also links the platform thread library for the telemetry
+consumer thread.
+
 `--help` does not request the EtherCAT master:
 
 ```sh
@@ -204,6 +208,23 @@ earlier bounded motion tests. The current raw-count zero-force control path uses
 
 The loop frequency is fixed at 1000 Hz. The cyclic loop records to preallocated
 memory and does not write files until after EtherCAT shutdown.
+
+## Runtime Telemetry
+
+The 1 kHz loop emits a telemetry frame every 10 cycles into a fixed-capacity
+single-producer/single-consumer queue. The frame includes the raw ELM feedback,
+ClearPath feedback, the command selected for that cycle, controller phase,
+raw-count setpoint/noise/error values, wakeup latency, timing overrun count,
+readiness state, and producer-side queue drop count.
+
+A separate non-realtime consumer thread drains the queue about every 20 ms and
+prints the newest frame once per second. On shutdown it drains any remaining
+frames and prints a summary with total frames popped, drain cycles containing
+data, the last sequence/sample index, and the last producer drop count.
+
+This telemetry is intentionally status-oriented. It is decimated, may drop
+frames if the consumer falls behind, and is not a replacement for the
+post-shutdown CSV capture.
 
 ## CSV
 

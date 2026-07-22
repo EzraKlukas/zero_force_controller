@@ -129,3 +129,37 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   command->target_velocity = 0;
   command->target_torque = 0;
 }
+
+TelemetryFrame
+DriveLogic::GetTelemetry(const CycleInputs &inputs) const noexcept {
+  TelemetryFrame frame{};
+  frame.sample_index = inputs.sample_index;
+  frame.source_monotonic_ns = inputs.scheduled_time_ns;
+  frame.wakeup_latency_ns = inputs.wakeup_latency_ns;
+  frame.analog = inputs.force;
+  frame.motor = inputs.motor;
+
+  ControllerTelemetry &telemetry = frame.telemetry;
+  if (negative_limit_latched_ || positive_limit_latched_) {
+    telemetry.phase = ControlPhase::returning_home;
+  } else if (inputs.sample_index < setpoint_sample_size) {
+    telemetry.phase = ControlPhase::baseline_capture;
+  } else if (inputs.sample_index < 2U * setpoint_sample_size) {
+    telemetry.phase = ControlPhase::noise_estimation;
+  } else {
+    telemetry.phase = ControlPhase::balancing;
+  }
+
+  telemetry.target_x_raw = target_x_;
+  telemetry.noise_rms_raw = rms_delta_x_;
+  telemetry.force_error_x_raw = inputs.force.x.raw_sample - target_x_;
+  telemetry.velocity_step_counts = next_velocity_step_;
+  telemetry.position_step_counts = next_position_step_;
+  telemetry.target_position_counts = target_position_;
+  telemetry.kp = kp_;
+  telemetry.drag = drag_;
+  telemetry.negative_limit_latched = negative_limit_latched_;
+  telemetry.positive_limit_latched = positive_limit_latched_;
+
+  return frame;
+}

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <cerrno>
+#include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <csignal>
@@ -17,9 +18,12 @@
 #include <cstring>
 #include <ctime>
 #include <exception>
+#include <functional>
 #include <limits>
 #include <new>
+#include <stop_token>
 #include <string>
+#include <thread>
 
 #include <sched.h>
 #include <sys/mman.h>
@@ -129,6 +133,14 @@ struct RunSummary {
   bool communication_lost = false;
   bool interrupted = false;
   bool duration_complete = false;
+};
+
+struct TelemetryConsumerSummary {
+  std::uint64_t total_frames_popped = 0;
+  std::uint64_t drain_cycles_with_data = 0;
+  std::uint64_t last_sequence = 0;
+  std::uint64_t last_sample_index = 0;
+  std::uint64_t last_queue_drop_count = 0;
 };
 
 // Small summary calculated while writing CSV, after realtime work is finished.
@@ -400,6 +412,92 @@ bool ReadyToRecord(const EthercatState &state, const Elm3604::Feedback &elm) {
          ElmChannelValid(elm.z);
 }
 
+void UpdateTelemetryConsumerSummary(const TelemetryFrame &newest,
+                                    std::uint64_t drained,
+                                    TelemetryConsumerSummary *summary) {
+  summary->total_frames_popped += drained;
+  ++summary->drain_cycles_with_data;
+  summary->last_sequence = newest.sequence;
+  summary->last_sample_index = newest.sample_index;
+  summary->last_queue_drop_count = newest.queue_drop_count;
+}
+
+void RunTelemetryConsumer(std::stop_token stop_token,
+                          TelemetryQueue &telemetry_queue,
+                          TelemetryConsumerSummary *summary) {
+  constexpr auto kConsumerSleep = std::chrono::milliseconds(20);
+  constexpr auto kStatusInterval = std::chrono::seconds(1);
+  auto next_status = std::chrono::steady_clock::now() + kStatusInterval;
+
+  for (;;) {
+    if (stop_token.stop_requested()) {
+      break;
+    }
+    std::this_thread::sleep_for(kConsumerSleep);
+
+    TelemetryFrame candidate{};
+    TelemetryFrame newest{};
+    bool received_any = false;
+    std::uint64_t drained = 0;
+
+    while (telemetry_queue.pop(candidate)) {
+      newest = candidate;
+      received_any = true;
+      ++drained;
+    }
+
+    if (!received_any) {
+      continue;
+    }
+
+    UpdateTelemetryConsumerSummary(newest, drained, summary);
+
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= next_status) {
+      std::printf("telemetry: seq=%" PRIu64 " sample=%" PRIu64
+                  " drained=%" PRIu64 " x=%" PRId32 " motor_pos=%" PRId32
+                  " limit_latches=%u/%u"
+                  " producer_drops=%" PRIu64 "\n",
+                  newest.sequence, newest.sample_index, drained,
+                  newest.analog.x.raw_sample, newest.motor.actual_position,
+                  newest.telemetry.negative_limit_latched ? 1U : 0U,
+                  newest.telemetry.positive_limit_latched ? 1U : 0U,
+                  newest.queue_drop_count);
+      next_status = now + kStatusInterval;
+    }
+  }
+
+  TelemetryFrame candidate{};
+  TelemetryFrame newest{};
+  bool received_any = false;
+  std::uint64_t drained = 0;
+
+  while (telemetry_queue.pop(candidate)) {
+    newest = candidate;
+    received_any = true;
+    ++drained;
+  }
+
+  if (received_any) {
+    UpdateTelemetryConsumerSummary(newest, drained, summary);
+  }
+}
+
+void StopTelemetryConsumer(std::jthread *consumer,
+                           const TelemetryConsumerSummary &summary) {
+  if (consumer->joinable()) {
+    consumer->request_stop();
+    consumer->join();
+  }
+
+  std::printf("Telemetry consumer summary: popped=%" PRIu64
+              " drain_cycles_with_data=%" PRIu64 " last_seq=%" PRIu64
+              " last_sample=%" PRIu64 " last_producer_drops=%" PRIu64 "\n",
+              summary.total_frames_popped, summary.drain_cycles_with_data,
+              summary.last_sequence, summary.last_sample_index,
+              summary.last_queue_drop_count);
+}
+
 void PrintReadinessSummary(const EthercatState &state) {
   std::fprintf(stderr, "Startup readiness was not reached.\n");
   std::fprintf(stderr,
@@ -530,12 +628,12 @@ void SendBoundedShutdown(const RuntimeContext &ctx, Clearpath::Command command,
 // Main 1 kHz EtherCAT loop. All memory used for capture is supplied by the
 // caller; there is no file IO in this loop.
 RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
-                     SampleRecord *records, std::uint64_t max_samples) {
+                     SampleRecord *records, std::uint64_t max_samples,
+                     TelemetryQueue &telemetry_queue) {
   RunSummary summary{};
   EthercatState state{};
   DriveLogic drive_logic(options.kp, options.drag);
   Clearpath::Command command{};
-  TelemetryQueue telemetry_queue;
   std::uint64_t telemetry_sequence = 0;
   std::uint64_t telemetry_queue_drops = 0;
   unsigned int sync_ref_counter = 0;
@@ -574,6 +672,7 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
     }
 
     PollStates(ctx, motor, &state);
+    const bool ready = ReadyToRecord(state, elm);
 
     if (!CiA402::IsOperationEnabledCSP(motor)) {
       hold_seeded = false;
@@ -609,6 +708,10 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
 
         frame.sequence = telemetry_sequence++;
         frame.queue_drop_count = telemetry_queue_drops;
+        frame.command = command;
+        frame.timing_overruns = summary.timing_overruns;
+        frame.ethercat_ready = ready;
+        frame.communication_lost = recording && !ready;
 
         if (!telemetry_queue.push(frame)) {
           ++telemetry_queue_drops;
@@ -618,7 +721,6 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
 
     EndCycle(ctx, command, &sync_ref_counter);
 
-    const bool ready = ReadyToRecord(state, elm);
     if (!recording) {
       if (ready) {
         recording = true;
@@ -834,17 +936,23 @@ int main(int argc, char **argv) {
   }
 
   InstallSignalHandlers();
+  TelemetryQueue telemetry_queue;
+  TelemetryConsumerSummary telemetry_summary{};
+  std::jthread telemetry_consumer(
+      RunTelemetryConsumer, std::ref(telemetry_queue), &telemetry_summary);
+
   ConfigureRealtimeBestEffort();
 
+  int exit_code = 0;
   std::printf("Requesting EtherCAT master 0.\n");
   ec_master_t *master = ecrt_request_master(0);
   if (!master) {
     std::fprintf(stderr, "Failed to request EtherCAT master 0.\n");
+    StopTelemetryConsumer(&telemetry_consumer, telemetry_summary);
     delete[] records;
     return 1;
   }
 
-  int exit_code = 0;
   RuntimeContext ctx{};
   ctx.master = master;
   RunSummary run_summary{};
@@ -942,7 +1050,8 @@ int main(int argc, char **argv) {
 
     std::printf("Starting %u Hz loop; waiting for three-slave readiness.\n",
                 kFrequencyHz);
-    run_summary = RunCyclic(ctx, options, records, max_samples);
+    run_summary =
+        RunCyclic(ctx, options, records, max_samples, telemetry_queue);
 
     if (run_summary.startup_timeout) {
       PrintReadinessSummary(run_summary.final_state);
@@ -957,6 +1066,7 @@ int main(int argc, char **argv) {
 
   ecrt_release_master(master);
   master = nullptr;
+  StopTelemetryConsumer(&telemetry_consumer, telemetry_summary);
 
   const bool should_write_csv =
       !run_summary.startup_timeout &&

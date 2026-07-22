@@ -18,6 +18,7 @@ set(IGH_MASTER_ROOT "" CACHE PATH
 
 find_package(EtherCAT CONFIG QUIET)
 find_package(Boost REQUIRED)
+find_package(Threads REQUIRED)
 
 if(NOT TARGET EtherLab::ethercat)
     set(_igh_include_hints
@@ -75,6 +76,7 @@ target_include_directories(zero_force_controller PRIVATE
 target_link_libraries(zero_force_controller PRIVATE
     EtherLab::ethercat
     Boost::headers
+    Threads::Threads
 )
 
 target_compile_options(zero_force_controller PRIVATE
