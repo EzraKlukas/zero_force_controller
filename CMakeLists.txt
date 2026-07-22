@@ -72,7 +72,10 @@ target_include_directories(zero_force_controller PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(zero_force_controller PRIVATE EtherLab::ethercat)
+target_link_libraries(zero_force_controller PRIVATE
+    EtherLab::ethercat
+    Boost::headers
+)
 
 target_compile_options(zero_force_controller PRIVATE
     -Wall

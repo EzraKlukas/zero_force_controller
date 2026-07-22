@@ -73,6 +73,8 @@ bool DriveLogic::LimitSwitchCheck(const CycleInputs &inputs) {
   const bool negative_limit = inputs.motor.negative_limit_reached();
   const bool positive_limit = inputs.motor.positive_limit_reached();
 
+  /* trying something, to make ROS be the latch resetting agent, rather than the
+  current switch state, once a switch has been hit.
   // Rearm each limit after the switch is released.
   if (!negative_limit) {
     negative_limit_latched_ = false;
@@ -80,6 +82,7 @@ bool DriveLogic::LimitSwitchCheck(const CycleInputs &inputs) {
   if (!positive_limit) {
     positive_limit_latched_ = false;
   }
+  */
 
   // Reverse only when moving into the asserted limit, and only once
   // per assertion. Note that positive position_step_per_cycle corresponds to

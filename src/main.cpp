@@ -6,6 +6,7 @@
 // data pointers and raw PDO offsets.
 
 #include <algorithm>
+#include <boost/lockfree/spsc_queue.hpp>
 #include <cerrno>
 #include <cinttypes>
 #include <cmath>
@@ -32,6 +33,12 @@
 #include "elm3604_pdo.hpp"
 
 namespace {
+
+constexpr std::size_t kTelemetryQueueCapacity = 16;
+constexpr std::uint64_t kTelemetryDecimation = 10;
+
+using TelemetryQueue = boost::lockfree::spsc_queue<
+    TelemetryFrame, boost::lockfree::capacity<kTelemetryQueueCapacity>>;
 
 constexpr std::uint64_t kNsecPerSec = 1000000000ULL;
 constexpr unsigned int kFrequencyHz = 1000;
@@ -528,6 +535,9 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
   EthercatState state{};
   DriveLogic drive_logic(options.kp, options.drag);
   Clearpath::Command command{};
+  TelemetryQueue telemetry_queue;
+  std::uint64_t telemetry_sequence = 0;
+  std::uint64_t telemetry_queue_drops = 0;
   unsigned int sync_ref_counter = 0;
   bool recording = false;
   bool hold_seeded = false;
@@ -594,8 +604,15 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
         }
       }
 
-      if ((inputs.sample_index % 10) == 0) {
+      if ((inputs.sample_index % kTelemetryDecimation) == 0) {
         TelemetryFrame frame = drive_logic.GetTelemetry(inputs);
+
+        frame.sequence = telemetry_sequence++;
+        frame.queue_drop_count = telemetry_queue_drops;
+
+        if (!telemetry_queue.push(frame)) {
+          ++telemetry_queue_drops;
+        }
       }
     }
 

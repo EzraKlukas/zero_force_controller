@@ -59,6 +59,7 @@ struct TelemetryFrame {
   std::uint64_t source_monotonic_ns{};
   std::int64_t wakeup_latency_ns{};
   std::uint64_t timing_overruns{};
+  std::uint64_t queue_drop_count{};
 
   Elm3604::Feedback analog{};
   Clearpath::PDO::TxPDOs motor{};
