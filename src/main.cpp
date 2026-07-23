@@ -695,8 +695,8 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
           limitSwitchHit = drive_logic.LimitSwitchCheck(inputs);
         }
         if (!limitSwitchHit) {
-          drive_logic.InertiaCalibrationNextCommand(inputs, &command);
-          // drive_logic.CalculateNextCommand(inputs, &command);
+          // drive_logic.InertiaCalibrationNextCommand(inputs, &command);
+          drive_logic.CalculateNextCommand(inputs, &command);
         } else {
           if (drive_logic.ReturnHome(inputs, &command)) {
             g_stop_requested = true;
