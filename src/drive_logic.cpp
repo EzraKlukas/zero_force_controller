@@ -141,11 +141,26 @@ void DriveLogic::InertiaCalibrationNextCommand(const CycleInputs &inputs,
         next_position_step_ = base_position_step;
       } // else keep moving constant velocity in whatever direction it's going
         // in.
-    } else {
-      next_velocity_step_ -= direction * accel_step_;
+      next_position_step_ = std::clamp(next_position_step_, -base_position_step,
+                                       base_position_step);
+      if (!in_zero_accel_range &&
+          next_position_step_ > 0) { // isolates only one point in each cycle.
+        ++current_accel_cycle_count_;
+        if (current_accel_cycle_count_ == cycles_per_accel) {
+          current_accel_cycle_count_ = 0;
+          ++accel_target_;
+          accel_target_ = std::clamp(accel_target_, -max_const_accel_target,
+                                     max_const_accel_target);
+        }
+      }
 
-      next_velocity_step_ = std::clamp(next_velocity_step_, -const_accel_target,
-                                       const_accel_target);
+      in_zero_accel_range = true;
+    } else {
+      in_zero_accel_range = false;
+      next_velocity_step_ -= direction * accel_step;
+
+      next_velocity_step_ =
+          std::clamp(next_velocity_step_, -accel_target_, accel_target_);
     }
 
     next_position_step_ += next_velocity_step_;
