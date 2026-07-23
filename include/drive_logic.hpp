@@ -20,6 +20,9 @@ inline constexpr std::int32_t cycles_per_accel = 10;
 inline constexpr std::int32_t accel_step = 5;
 inline constexpr std::int32_t base_position_step = 500;
 
+// acceleration (counts / ms^2) * k_af = ma
+inline constexpr std::int32_t k_af = 166;
+
 // Per-cycle inputs passed from the EtherCAT loop into DriveLogic. Force samples
 // are ELM3604 raw signed counts; motor positions and velocities are ClearPath
 // drive counts.

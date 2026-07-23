@@ -105,11 +105,13 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
                                       Clearpath::Command *command) {
   if (!LimitSwitchCheck(inputs)) {
     const auto delta_x = inputs.force.x.raw_sample - target_x_;
+
+    const auto f_ext = delta_x - k_af * next_velocity_step_;
     // Convert raw X-count error into an empirical motor-count acceleration.
     // The 1000 factor keeps useful command-line gain values in a manageable
     // range; it is not a physical unit conversion.
-    if (std::abs(delta_x) > rms_delta_x_) {
-      next_velocity_step_ = -static_cast<int32_t>(kp_ / 1000.0 * delta_x);
+    if (std::abs(f_ext) > rms_delta_x_) {
+      next_velocity_step_ = -static_cast<int32_t>(kp_ / 1000.0 * f_ext);
     } else {
       next_velocity_step_ = 0;
     }
