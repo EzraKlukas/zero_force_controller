@@ -137,7 +137,10 @@ void DriveLogic::InertiaCalibrationNextCommand(const CycleInputs &inputs,
     const int32_t direction = displacement >= 0 ? 1 : -1;
 
     if (std::abs(displacement) < zero_accel_position_range) {
-      next_position_step_ = direction * base_position_step;
+      if (next_position_step_ == 0) {
+        next_position_step_ = base_position_step;
+      } // else keep moving constant velocity in whatever direction it's going
+        // in.
     } else {
       next_velocity_step_ -= direction * accel_step_;
 
