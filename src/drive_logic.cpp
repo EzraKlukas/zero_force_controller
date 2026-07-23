@@ -149,6 +149,9 @@ void DriveLogic::InertiaCalibrationNextCommand(const CycleInputs &inputs,
         if (current_accel_cycle_count_ == cycles_per_accel) {
           current_accel_cycle_count_ = 0;
           ++accel_target_;
+          if (accel_target_ == max_const_accel_target + 1) {
+              done = true;
+          }
           accel_target_ = std::clamp(accel_target_, -max_const_accel_target,
                                      max_const_accel_target);
         }
@@ -166,7 +169,9 @@ void DriveLogic::InertiaCalibrationNextCommand(const CycleInputs &inputs,
     next_position_step_ += next_velocity_step_;
   }
 
-  target_position_ += next_position_step_;
+  if (!done) {
+    target_position_ += next_position_step_;
+  }
 
   command->controlword = CiA402::kControlwordEnableOperation;
   command->mode_op = CiA402::kModeCsp;

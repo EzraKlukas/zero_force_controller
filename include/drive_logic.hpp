@@ -126,6 +126,7 @@ private:
   std::int32_t accel_target_ = 1;
   std::uint32_t current_accel_cycle_count_ = 0;
 
+  bool done = false;
   bool in_zero_accel_range = true;
   bool negative_limit_latched_ = false;
   bool positive_limit_latched_ = false;
