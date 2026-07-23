@@ -14,6 +14,11 @@
 
 inline constexpr std::size_t setpoint_sample_size = 1000;
 
+inline constexpr std::int32_t zero_accel_position_range = 10000;
+inline constexpr std::int32_t const_accel_target = 4;
+inline constexpr std::int32_t accel_step_ = 2;
+inline constexpr std::int32_t base_position_step = 100;
+
 // Per-cycle inputs passed from the EtherCAT loop into DriveLogic. Force samples
 // are ELM3604 raw signed counts; motor positions and velocities are ClearPath
 // drive counts.
@@ -94,6 +99,9 @@ public:
   // units. No SI-unit conversion is performed here.
   void CalculateNextCommand(const CycleInputs &inputs,
                             Clearpath::Command *command);
+
+  void InertiaCalibrationNextCommand(const CycleInputs &inputs,
+                                     Clearpath::Command *command);
   // Commands motion back toward the post-setpoint initial position.
   bool ReturnHome(const CycleInputs &inputs, Clearpath::Command *command);
 

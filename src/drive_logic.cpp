@@ -130,6 +130,33 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   command->target_torque = 0;
 }
 
+void DriveLogic::InertiaCalibrationNextCommand(const CycleInputs &inputs,
+                                               Clearpath::Command *command) {
+  if (!LimitSwitchCheck(inputs)) {
+    const int32_t displacement = target_position_ - initial_position_;
+    const int32_t direction = displacement >= 0 ? 1 : -1;
+
+    if (std::abs(displacement) < zero_accel_position_range) {
+      next_position_step_ = direction * base_position_step;
+    } else {
+      next_velocity_step_ -= direction * accel_step_;
+
+      next_velocity_step_ = std::clamp(next_velocity_step_, -const_accel_target,
+                                       const_accel_target);
+    }
+
+    next_position_step_ += next_velocity_step_;
+  }
+
+  target_position_ += next_position_step_;
+
+  command->controlword = CiA402::kControlwordEnableOperation;
+  command->mode_op = CiA402::kModeCsp;
+  command->target_position = target_position_;
+  command->target_velocity = 0;
+  command->target_torque = 0;
+}
+
 TelemetryFrame
 DriveLogic::GetTelemetry(const CycleInputs &inputs) const noexcept {
   TelemetryFrame frame{};
