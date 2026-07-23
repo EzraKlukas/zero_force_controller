@@ -106,6 +106,10 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
   if (!LimitSwitchCheck(inputs)) {
     const auto delta_x = inputs.force.x.raw_sample - target_x_;
 
+    // Remove the load-cell component explained by commanded stage
+    // acceleration. k_af is the measured raw-count gain for the current 1 kHz
+    // per-cycle acceleration units; the remaining f_ext is treated as external
+    // force in raw counts.
     const auto f_ext = delta_x - k_af * next_velocity_step_;
     // Convert raw X-count error into an empirical motor-count acceleration.
     // The 1000 factor keeps useful command-line gain values in a manageable
@@ -134,6 +138,9 @@ void DriveLogic::CalculateNextCommand(const CycleInputs &inputs,
 
 void DriveLogic::InertiaCalibrationNextCommand(const CycleInputs &inputs,
                                                Clearpath::Command *command) {
+  // Sweep one discrete acceleration target at a time. Each setting is held for
+  // cycles_per_accel complete center-crossing cycles before stepping up to the
+  // next target. The CSV from this mode is analyzed offline to fit k_af.
   if (!LimitSwitchCheck(inputs)) {
     const int32_t displacement = target_position_ - initial_position_;
     const int32_t direction = displacement >= 0 ? 1 : -1;
