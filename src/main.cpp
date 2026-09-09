@@ -686,8 +686,9 @@ RunSummary RunCyclic(const RuntimeContext &ctx, const Options &options,
         hold_seeded = true;
       }
 
-      // DriveLogic uses raw ELM counts and ClearPath motor counts. No SI-unit
-      // calibration or force conversion is applied at this checkpoint.
+      // DriveLogic uses raw ELM counts and ClearPath motor counts. It applies
+      // the raw-count inertial compensation documented in drive_logic.hpp, but
+      // no SI-unit calibration or force conversion.
       const CycleInputs inputs{elm, motor, summary.samples,
                                TimespecToNs(deadline), latency_ns};
       if (drive_logic.FindSetPoint(inputs)) {

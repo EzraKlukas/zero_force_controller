@@ -10,8 +10,10 @@ This checkpoint is intentionally not an SI-unit force controller yet. The
 ELM3604 samples are still raw signed 32-bit PDO counts, the load cell has not
 been calibrated into engineering units here, and the ClearPath commands are
 still motor position/count increments rather than calibrated forces applied to
-the load cell. Treat the current controller gains as empirical raw-count to
-motor-count tuning parameters for the present hardware setup.
+the load cell. The current controller does, however, subtract the measured
+inertial load-cell bias caused by stage acceleration before applying the
+zero-force proportional update. Treat the current controller gains as empirical
+raw-count to motor-count tuning parameters for the present hardware setup.
 
 ## Current Behavior
 
@@ -23,8 +25,10 @@ The application:
 - enables the ClearPath drive in Cyclic Synchronous Position mode;
 - captures a startup raw X-axis baseline over 1000 samples;
 - estimates the raw X-axis noise level over the next 1000 samples;
-- commands position increments proportional to raw X-axis deviation outside
-  that noise band;
+- subtracts the measured acceleration-induced X-axis load-cell bias from the
+  raw X-axis deviation before the proportional update;
+- commands position increments proportional to the corrected X-axis deviation
+  outside that noise band;
 - applies a simple drag term to damp the accumulated motor-count velocity;
 - reverses/returns when a configured ClearPath logical limit is reached;
 - publishes decimated in-process telemetry to a non-realtime consumer thread;
@@ -33,12 +37,73 @@ The application:
 The control path is therefore:
 
 ```text
-ELM3604 raw X count -> raw-count baseline error -> motor-count acceleration
-                    -> damped motor-count step -> ClearPath target position
+ELM3604 raw X count -> raw-count baseline error
+                    -> subtract acceleration-induced inertial bias
+                    -> motor-count acceleration
+                    -> damped motor-count step
+                    -> ClearPath target position
 ```
 
 No conversion is performed from raw ADC/load-cell counts to newtons, and no
 conversion is performed from ClearPath target position/counts to applied force.
+The acceleration subtraction is only a raw-count inertial-bias correction for
+the present mechanism.
+
+## Inertial Bias Compensation
+
+The latest acceleration sweep measured the proportionality between settled
+linear-stage acceleration and the X-axis load-cell response:
+
+```text
+inertial_bias_gain = 0.000165970552 raw X counts / (motor count / s^2)
+linearity check: F = 0.000167351549 a - 13.52, R^2 = 0.99941
+settled groups used: 14 / 20
+```
+
+At the fixed 1 kHz control rate, the controller's per-cycle acceleration state
+is in motor counts / ms^2. Converting the fitted gain into those units gives:
+
+```text
+0.000165970552 * 1,000,000 = 165.970552
+```
+
+`DriveLogic` therefore uses `k_af = 166` raw X counts per
+motor count / ms^2 and estimates:
+
+```text
+external_force_counts =
+    measured_load_cell_offset - k_af * motor_acceleration_per_cycle
+```
+
+That corrected raw-count value is compared with the startup RMS noise band and
+then multiplied by `--kp` to choose the next motor-count acceleration command.
+This is still a raw-count controller, not a calibrated force-in-newtons loop.
+
+## Acceleration Sweep
+
+`DriveLogic::InertiaCalibrationNextCommand()` is the calibration motion used to
+generate the discrete-acceleration data. It moves the linear stage through
+complete cycles around the post-startup initial position while stepping the
+maximum per-cycle acceleration target from low to high settings.
+
+The sweep constants are:
+
+```text
+zero_accel_position_range = 1000 motor counts
+base_position_step        = 500 motor counts / cycle
+accel_step                = 5 motor counts / cycle^2
+cycles_per_accel          = 10 complete cycles per target
+max_const_accel_target    = 20 motor counts / cycle^2
+```
+
+Within the center range the command is held at constant velocity so acceleration
+is near zero. Outside that range the function ramps acceleration toward the
+current discrete target, reverses around the travel cycle, and advances to the
+next acceleration target after the configured number of complete cycles. The
+resulting CSV is analyzed offline with phase-normalized cycle-triggered
+averages; settled positive and negative acceleration plateaus are paired so
+each group's residual DC load-cell offset cancels before fitting the inertial
+bias gain.
 
 ## Verified Topology
 

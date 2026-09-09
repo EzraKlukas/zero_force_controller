@@ -20,7 +20,13 @@ inline constexpr std::int32_t cycles_per_accel = 10;
 inline constexpr std::int32_t accel_step = 5;
 inline constexpr std::int32_t base_position_step = 500;
 
-// acceleration (counts / ms^2) * k_af = ma
+// Inertial load-cell bias from the acceleration sweep:
+//   0.000165970552 raw X counts / (motor count / s^2)
+// At the 1 kHz loop rate next_velocity_step_ is a per-cycle acceleration in
+// motor counts / ms^2, so the same measured gain is approximately:
+//   165.970552 raw X counts / (motor count / ms^2)
+// The integer value below keeps the runtime path deterministic and matches the
+// calibrated gain to the precision useful for raw-count compensation here.
 inline constexpr std::int32_t k_af = 166;
 
 // Per-cycle inputs passed from the EtherCAT loop into DriveLogic. Force samples
@@ -85,10 +91,11 @@ struct TelemetryFrame {
 // Implements the current physical checkpoint controller:
 // 1. learn a raw X-axis baseline,
 // 2. estimate raw X-axis noise,
-// 3. convert raw-count error into motor-count acceleration with an empirical
-//    gain,
-// 4. damp and accumulate that into target-position increments,
-// 5. return home after a logical limit hit.
+// 3. subtract the measured acceleration-induced inertial load-cell bias,
+// 4. convert the corrected raw-count error into motor-count acceleration with
+//    an empirical gain,
+// 5. damp and accumulate that into target-position increments,
+// 6. return home after a logical limit hit.
 class DriveLogic {
 public:
   explicit DriveLogic(double kp, double drag);
@@ -104,6 +111,11 @@ public:
   void CalculateNextCommand(const CycleInputs &inputs,
                             Clearpath::Command *command);
 
+  // Drives the linear stage through repeated cycles at discrete per-cycle
+  // acceleration limits. This calibration motion is intended for offline
+  // inertia analysis: compare measured motor acceleration with the raw X
+  // load-cell response, then fit the inertial bias gain used by
+  // CalculateNextCommand().
   void InertiaCalibrationNextCommand(const CycleInputs &inputs,
                                      Clearpath::Command *command);
   // Commands motion back toward the post-setpoint initial position.
