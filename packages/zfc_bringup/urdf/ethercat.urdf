@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<robot name="zfc_raw_counts">
+  <link name="base"/>
+  <ros2_control name="EthercatSystem" type="system">
+    <hardware>
+      <plugin>zfc_ethercat_hardware/EthercatHardware</plugin>
+      <param name="startup_timeout_seconds">20</param>
+      <param name="update_rate_hz">1000</param>
+      <param name="max_increment_counts">10</param>
+    </hardware>
+    <gpio name="clearpath_axis">
+      <command_interface name="target_position_counts"/>
+      <state_interface name="actual_position_counts"/>
+      <state_interface name="actual_velocity_raw"/>
+      <state_interface name="actual_torque_raw"/>
+      <state_interface name="statusword"/>
+      <state_interface name="mode_display"/>
+      <state_interface name="negative_limit"/>
+      <state_interface name="positive_limit"/>
+    </gpio>
+    <sensor name="elm3604">
+      <state_interface name="x_raw_counts"/>
+      <state_interface name="y_raw_counts"/>
+      <state_interface name="z_raw_counts"/>
+      <state_interface name="x_valid"/>
+      <state_interface name="y_valid"/>
+      <state_interface name="z_valid"/>
+    </sensor>
+    <gpio name="ethercat">
+      <state_interface name="ready"/>
+      <state_interface name="link_up"/>
+      <state_interface name="slaves_responding"/>
+      <state_interface name="working_counter"/>
+      <state_interface name="working_counter_complete"/>
+      <state_interface name="communication_fault"/>
+      <state_interface name="read_calls"/>
+      <state_interface name="write_calls"/>
+      <state_interface name="communication_faults"/>
+      <state_interface name="invalid_commands"/>
+      <state_interface name="excessive_period_observations"/>
+      <state_interface name="limit_rejections"/>
+    </gpio>
+  </ros2_control>
+</robot>

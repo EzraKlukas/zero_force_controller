@@ -267,7 +267,11 @@ bool EthercatSystem::shutdown() noexcept {
     if (SleepUntil(deadline) != 0)
       return false;
     read(TimespecToNs(deadline));
-    write(stop.next());
+    auto command = stop.next();
+    if (command.controlword == CiA402::kControlwordEnableOperation &&
+        !CiA402::IsOperationEnabledCSP(snapshot_.motor))
+      command.controlword = CiA402::kControlwordShutdown;
+    write(command);
   }
   AddNs(&deadline, kPeriodNs);
   if (SleepUntil(deadline) != 0)

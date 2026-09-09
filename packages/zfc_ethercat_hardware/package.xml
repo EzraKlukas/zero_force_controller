@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>zfc_ethercat_hardware</name><version>0.1.0</version>
+  <description>One Humble SystemInterface for the coupled IgH EtherCAT system</description>
+  <maintainer email="ezraklukas@users.noreply.github.com">Ezra Klukas</maintainer>
+  <license>LicenseRef-Proprietary</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>zfc_ethercat_core</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

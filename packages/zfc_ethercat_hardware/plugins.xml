@@ -1,0 +1,5 @@
+<library path="zfc_ethercat_hardware">
+  <class name="zfc_ethercat_hardware/EthercatHardware" type="zfc_ethercat_hardware::EthercatHardware" base_class_type="hardware_interface::SystemInterface">
+    <description>One master/domain, synchronous raw-count EtherCAT system.</description>
+  </class>
+</library>

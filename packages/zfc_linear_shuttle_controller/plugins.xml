@@ -1,0 +1,5 @@
+<library path="zfc_linear_shuttle_controller">
+  <class name="zfc_linear_shuttle_controller/LinearShuttleController" type="zfc_linear_shuttle_controller::LinearShuttleController" base_class_type="controller_interface::ControllerInterface">
+    <description>Exact cycle-count single round trip in raw motor counts.</description>
+  </class>
+</library>

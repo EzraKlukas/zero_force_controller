@@ -73,6 +73,66 @@ int main() {
   elm.z.error = false;
   bus.ek1100.operational = 0;
   CHECK(!ReadyToRecord(bus, elm));
+  // Signed raw data and packed status decoding, using actual slave accessors.
+  std::array<std::uint8_t, 64> bytes{};
+  Elm3604::PdoOffsets elm_offsets{};
+  auto &x = elm_offsets.x;
+  x.sample_offset = 0;
+  x.number_of_samples_offset = 4;
+  x.error_offset = x.underrange_offset = x.overrange_offset = x.diag_offset =
+      x.txpdo_state_offset = x.cycle_counter_offset = 5;
+  x.error_bit = 0;
+  x.underrange_bit = 1;
+  x.overrange_bit = 2;
+  x.diag_bit = 4;
+  x.txpdo_state_bit = 5;
+  x.cycle_counter_bit = 6;
+  elm_offsets.y = elm_offsets.z = x;
+  elm_offsets.y.sample_offset = 8;
+  elm_offsets.z.sample_offset = 12;
+  EC_WRITE_S32(bytes.data(), -123);
+  EC_WRITE_U8(bytes.data() + 4, 1);
+  EC_WRITE_U8(bytes.data() + 5, 0x80);
+  EC_WRITE_S32(bytes.data() + 8, -456);
+  EC_WRITE_S32(bytes.data() + 12, 789);
+  auto decoded = Elm3604::ReadFeedback(bytes.data(), elm_offsets);
+  CHECK(decoded.x.raw_sample == -123 && decoded.y.raw_sample == -456 &&
+        decoded.z.raw_sample == 789);
+  CHECK(decoded.x.input_cycle_counter == 2 && ElmChannelValid(decoded.x));
+  EC_WRITE_U8(bytes.data() + 5, 0x21);
+  decoded = Elm3604::ReadFeedback(bytes.data(), elm_offsets);
+  CHECK(decoded.x.error && decoded.x.txpdo_state &&
+        !ElmChannelValid(decoded.x));
+  Clearpath::PdoOffsets motor_offsets{};
+  motor_offsets.rx.controlword = 0;
+  motor_offsets.rx.mode_op = 2;
+  motor_offsets.rx.target_position = 3;
+  motor_offsets.rx.target_velocity = 7;
+  motor_offsets.rx.target_torque = 11;
+  command = {15, 8, -123456, -789, -42};
+  Clearpath::WriteCommand(bytes.data(), motor_offsets, command);
+  CHECK(EC_READ_U16(bytes.data()) == 15 && EC_READ_S8(bytes.data() + 2) == 8);
+  CHECK(EC_READ_S32(bytes.data() + 3) == -123456 &&
+        EC_READ_S32(bytes.data() + 7) == -789 &&
+        EC_READ_S16(bytes.data() + 11) == -42);
+  motor_offsets.tx.statusword = 16;
+  motor_offsets.tx.mode_display = 18;
+  motor_offsets.tx.actual_position = 19;
+  motor_offsets.tx.actual_velocity = 23;
+  motor_offsets.tx.actual_torque = 27;
+  motor_offsets.tx.digital_input = 29;
+  EC_WRITE_U16(bytes.data() + 16, 0x27);
+  EC_WRITE_S8(bytes.data() + 18, 8);
+  EC_WRITE_S32(bytes.data() + 19, INT32_MIN);
+  EC_WRITE_S32(bytes.data() + 23, -999);
+  EC_WRITE_S16(bytes.data() + 27, -123);
+  EC_WRITE_U32(bytes.data() + 29, 0x30003);
+  motor = Clearpath::ReadTxPDOs(bytes.data(), motor_offsets);
+  CHECK(CiA402::IsOperationEnabledCSP(motor));
+  CHECK(motor.actual_position == INT32_MIN && motor.actual_velocity == -999 &&
+        motor.actual_torque == -123);
+  CHECK(motor.negative_limit_reached() && motor.positive_limit_reached());
+  CHECK(motor.raw_input_a_line_on() && motor.raw_input_b_line_on());
   EthercatSystem core;
   CHECK(!core.configured());
   core.release();

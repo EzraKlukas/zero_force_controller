@@ -8,6 +8,8 @@ add_library(${PROJECT_NAME} SHARED src/cia402.cpp src/clearpath_pdo.cpp src/elm3
 add_library(zfc_ethercat_core::zfc_ethercat_core ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include/zfc_ethercat_core>)
 target_link_libraries(${PROJECT_NAME} PUBLIC EtherLab::ethercat)
+# Retain the discovered non-system IgH library directory in the installed core.
+set_target_properties(${PROJECT_NAME} PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
 if(NOT ZFC_ROOT_BUILD)
   find_package(ament_cmake REQUIRED)
