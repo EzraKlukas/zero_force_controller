@@ -6,3 +6,7 @@ build/
 # Local build and editor artifacts
 build/
 .cache/
+
+install/
+log/
+__pycache__/
