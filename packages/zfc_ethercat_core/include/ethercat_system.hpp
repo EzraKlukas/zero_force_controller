@@ -43,6 +43,7 @@ public:
   void start(const Clearpath::PDO::TxPDOs &motor) noexcept;
   Clearpath::Command next() noexcept;
   bool done() const noexcept { return cycle_ >= 120; }
+  unsigned cycle() const noexcept { return cycle_; }
 
 private:
   unsigned cycle_ = 120;

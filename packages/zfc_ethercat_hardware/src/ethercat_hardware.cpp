@@ -67,6 +67,7 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
   if (SystemInterface::on_init(info) != Callback::SUCCESS)
     return Callback::ERROR;
   reset();
+  diagnostics_.start();
   try {
     for (const auto &[key, value] : info.hardware_parameters) {
       if (key != "startup_timeout_seconds" && key != "max_increment_counts" &&
@@ -145,6 +146,9 @@ EthercatHardware::export_command_interfaces() {
 }
 EthercatHardware::Callback
 EthercatHardware::on_configure(const rclcpp_lifecycle::State &) {
+  phase_ = "configure";
+  first_fault_ = {};
+  fault_reported_ = false;
   std::string error;
   if (!core_.configure(error)) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s",
@@ -155,13 +159,17 @@ EthercatHardware::on_configure(const rclcpp_lifecycle::State &) {
 }
 EthercatHardware::Callback
 EthercatHardware::on_activate(const rclcpp_lifecycle::State &) {
+  phase_ = "activate_startup";
+  diagnostics_.push(record("activation-enter"));
   std::string error;
   PrefaultStack();
   stop_complete_ = false;
   if (!core_.startup(startup_timeout_, error)) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s",
                  error.c_str());
+    fault(FaultReason::startup_timeout);
     stop();
+    report_fault();
     return Callback::ERROR;
   }
   fault_ = false;
@@ -172,6 +180,10 @@ EthercatHardware::on_activate(const rclcpp_lifecycle::State &) {
   previous_ = core_.snapshot().motor.actual_position;
   command_ = previous_;
   copy_state();
+  activation_end_ns_ = zfc::MonotonicNs();
+  first_write_ = true;
+  phase_ = "active";
+  diagnostics_.push(record("activation-ready"));
   return Callback::SUCCESS;
 }
 bool EthercatHardware::stop() noexcept {
@@ -180,7 +192,12 @@ bool EthercatHardware::stop() noexcept {
   if (stop_complete_ || !core_.configured())
     return true;
   command_ = core_.snapshot().motor.actual_position;
+  phase_ = "shutdown";
   const bool success = core_.shutdown();
+  if (!success)
+    fault(FaultReason::shutdown_failure);
+  diagnostics_.push(record(success ? "shutdown-confirmed" : "shutdown-failed"));
+  report_fault();
   stop_complete_ = true;
   return success;
 }
@@ -209,6 +226,7 @@ EthercatHardware::Callback
 EthercatHardware::on_error(const rclcpp_lifecycle::State &) {
   // Active I/O returns ERROR only after the cycle-driven stop has completed.
   // Lifecycle failures may arrive here earlier; stop() is bounded in that case.
+  diagnostics_.push(record("on-error"));
   stop();
   core_.release();
   reset();
@@ -235,13 +253,44 @@ void EthercatHardware::copy_state() noexcept {
   state_[16] = s.bus.domain.working_counter;
   state_[17] = s.bus.domain.wc_state == EC_WC_COMPLETE;
 }
-void EthercatHardware::fault(bool communication) noexcept {
+DiagnosticRecord EthercatHardware::record(const char *event) const noexcept {
+  DiagnosticRecord r;
+  r.event = event;
+  r.phase = phase_;
+  r.reason = first_fault_.reason;
+  r.mono_ns = zfc::MonotonicNs();
+  r.reads = state_[19];
+  r.writes = state_[20];
+  r.interval_ns = interval_ns_;
+  r.period_ns = supplied_period_ns_;
+  r.handoff_ns = activation_end_ns_ && read_entry_ns_ >= activation_end_ns_
+                     ? read_entry_ns_ - activation_end_ns_
+                     : 0;
+  r.snapshot = core_.snapshot();
+  r.target = command_;
+  r.claimed = claimed_;
+  r.read_pending = read_pending_;
+  r.stop_cycle = stop_sequence_.cycle();
+  return r;
+}
+void EthercatHardware::report_fault() noexcept {
+  if (first_fault_.reason != FaultReason::none && !fault_reported_) {
+    diagnostics_.push(first_fault_);
+    fault_reported_ = true;
+  }
+}
+void EthercatHardware::fault(FaultReason reason) noexcept {
+  if (first_fault_.reason == FaultReason::none) {
+    first_fault_ = record("first-fault");
+    first_fault_.reason = reason;
+  }
   if (fault_)
     return;
   fault_ = true;
   claimed_ = false;
   state_[13] = 0;
-  if (communication) {
+  if (reason >= FaultReason::master_link &&
+      reason <= FaultReason::elm_invalid) {
     state_[18] = 1;
     ++state_[21];
   }
@@ -254,7 +303,7 @@ EthercatHardware::Result EthercatHardware::perform_command_mode_switch(
   if (HasCommand(stop_names)) {
     if (active_ && !std::isfinite(command_)) {
       ++state_[22];
-      fault(false);
+      fault(FaultReason::invalid_command);
     }
     claimed_ = false;
     command_ = previous_ = core_.snapshot().motor.actual_position;
@@ -277,20 +326,39 @@ EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
     prefaulted_ = true;
   }
   const auto now = zfc::MonotonicNs();
+  read_entry_ns_ = now;
+  interval_ns_ = last_read_ns_ ? now - last_read_ns_ : 0;
+  supplied_period_ns_ = period.nanoseconds();
   core_.read(now); // Humble supplies system-time stamps; IgH requires our
                    // monotonic basis.
   if (active_) {
-    if (!core_.snapshot().ready)
-      fault(true);
+    const auto &s = core_.snapshot();
+    const auto &b = s.bus;
+    if (!b.master.link_up)
+      fault(FaultReason::master_link);
+    else if (b.master.slaves_responding != 3)
+      fault(FaultReason::slave_count_identity);
+    else if (b.domain.wc_state != EC_WC_COMPLETE)
+      fault(FaultReason::incomplete_wc);
+    else if (!b.ek1100.online || !b.ek1100.operational || !b.elm3604.online ||
+             !b.elm3604.operational || !b.clearpath.online ||
+             !b.clearpath.operational)
+      fault(FaultReason::slave_not_operational);
+    else if (!CiA402::IsOperationEnabledCSP(s.motor))
+      fault(FaultReason::drive_csp_loss);
+    else if (!zfc::ElmChannelValid(s.elm.x) || !zfc::ElmChannelValid(s.elm.y) ||
+             !zfc::ElmChannelValid(s.elm.z))
+      fault(FaultReason::elm_invalid);
     if (read_pending_)
-      fault(true);
+      fault(FaultReason::sequencing);
     if (period.nanoseconds() > 1500000)
       ++state_[23];
     // Independently bound a scheduling gap even if ROS time jumps.
+    if (last_read_ns_ && interval_ns_ > 10000000)
+      fault(FaultReason::monotonic_gap);
     if (last_read_ns_ &&
-        (now - last_read_ns_ > 10000000 || period.nanoseconds() <= 0 ||
-         period.nanoseconds() > 10000000))
-      fault(false);
+        (period.nanoseconds() <= 0 || period.nanoseconds() > 10000000))
+      fault(FaultReason::cm_period);
   }
   last_read_ns_ = now;
   read_pending_ = true;
@@ -303,7 +371,7 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
   if (!core_.configured())
     return Result::OK;
   if (active_ && !read_pending_)
-    fault(true);
+    fault(FaultReason::sequencing);
   read_pending_ = false;
   Clearpath::Command output{};
   output.mode_op = CiA402::kModeCsp;
@@ -319,7 +387,11 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
           ++state_[24];
         else
           ++state_[22];
-        fault(false);
+        fault(validation == zfc::CommandResult::limit
+                  ? FaultReason::logical_limit
+              : validation == zfc::CommandResult::excessive_increment
+                  ? FaultReason::excessive_increment
+                  : FaultReason::invalid_command);
       } else
         output.target_position = previous_ = counts;
     }
@@ -341,6 +413,13 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
       output.controlword = CiA402::kControlwordShutdown;
   }
   core_.write(output);
+  report_fault();
+  if (first_write_) {
+    diagnostics_.push(record("first-cm-write"));
+    first_write_ = false;
+  }
+  if (static_cast<std::uint64_t>(state_[20]) % 1000 == 0)
+    diagnostics_.push(record("status"));
   return Result::OK;
 }
 } // namespace zfc_ethercat_hardware

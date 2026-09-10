@@ -1,6 +1,7 @@
 #pragma once
 #include "count_command.hpp"
 #include "hardware_interface/system_interface.hpp"
+#include "zfc_ethercat_hardware/diagnostics.hpp"
 #include <array>
 namespace zfc_ethercat_hardware {
 class EthercatHardware : public hardware_interface::SystemInterface {
@@ -26,7 +27,9 @@ public:
 
 private:
   void copy_state() noexcept;
-  void fault(bool communication) noexcept;
+  void fault(FaultReason reason) noexcept;
+  DiagnosticRecord record(const char *event) const noexcept;
+  void report_fault() noexcept;
   bool stop() noexcept;
   void reset() noexcept;
   zfc::EthercatSystem core_;
@@ -37,5 +40,11 @@ private:
   bool active_ = false, claimed_ = false, fault_ = false, stop_complete_ = true;
   bool read_pending_ = false, prefaulted_ = false;
   std::uint64_t last_read_ns_ = 0;
+  std::uint64_t read_entry_ns_ = 0, interval_ns_ = 0, activation_end_ns_ = 0;
+  std::int64_t supplied_period_ns_ = 0;
+  const char *phase_ = "unconfigured";
+  DiagnosticRecord first_fault_{};
+  bool fault_reported_ = false, first_write_ = false;
+  DiagnosticSink diagnostics_;
 };
 } // namespace zfc_ethercat_hardware
