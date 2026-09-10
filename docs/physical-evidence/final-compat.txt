@@ -1,0 +1,35 @@
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/jetson/ezra-zfc/build/compat
+Consolidate compiler generated dependencies of target zfc_ethercat_core
+[ 50%] Built target zfc_ethercat_core
+Consolidate compiler generated dependencies of target core_test
+[ 70%] Built target core_test
+Consolidate compiler generated dependencies of target zero_force_controller
+[100%] Built target zero_force_controller
+Internal ctest changing into directory: /home/jetson/ezra-zfc/build/compat
+Test project /home/jetson/ezra-zfc/build/compat
+    Start 1: core_test
+1/1 Test #1: core_test ........................   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.01 sec
+Usage: ./build/compat/zero_force_controller [options]
+
+Options:
+  --help                              Show this help and exit.
+  --duration <seconds>                Capture duration after readiness (default: 60.0).
+  --output <path>                     CSV output path (default: combined_capture.csv).
+  --startup-timeout <seconds>         Time allowed to reach ready state (default: 20.0).
+  --position-step-per-cycle <counts>  Optional CSP target-position step after enablement (default: 0).
+  --kp                                P tuning constant (default: 0.00).
+The loop frequency is fixed at 1000 Hz.
+	linux-vdso.so.1 (0x0000ffff8fbcb000)
+	libzfc_ethercat_core.so => /home/jetson/ezra-zfc/build/compat/packages/zfc_ethercat_core/libzfc_ethercat_core.so (0x0000ffff8fb30000)
+	libstdc++.so.6 => /lib/aarch64-linux-gnu/libstdc++.so.6 (0x0000ffff8f870000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff8f7d0000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff8f790000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff8f5e0000)
+	/lib/ld-linux-aarch64.so.1 (0x0000ffff8fb92000)
+	libethercat.so.1 => /opt/etherlab/lib/libethercat.so.1 (0x0000ffff8f5c0000)

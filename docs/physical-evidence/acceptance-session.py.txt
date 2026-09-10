@@ -1,0 +1,141 @@
+"""One authorized acceptance run; a persistent marker prevents repeat attempts."""
+import subprocess,time,signal,pathlib,hashlib,re,json
+import rclpy
+from controller_manager_msgs.srv import SetHardwareComponentState,SwitchController,ListHardwareComponents,ListHardwareInterfaces,ListControllers
+from rcl_interfaces.srv import GetParameters
+root=pathlib.Path('/home/jetson/ezra-zfc'); evidence=root/'log/physical-bringup'; logpath=evidence/'single-motion.log'
+marker=evidence/'MOTION_ATTEMPTED'
+assert not marker.exists(), 'A motion attempt has already been made; never automatically repeat it'
+axis='clearpath_axis/target_position_counts'
+def owners():
+ result=[]
+ for entry in pathlib.Path('/proc').glob('[0-9]*/exe'):
+  try:
+   if entry.readlink().name in ('ros2_control_node','zero_force_controller'): result.append(entry.parent.name)
+  except (FileNotFoundError,PermissionError): pass
+ return result
+assert not owners(), 'Existing master owner'
+for args in (['id'],['ethercat','master','-m','0'],['ethercat','slaves','-m','0'],['ethercat','domains','-m','0']): subprocess.run(args,check=True)
+for pkg in ('zfc_ethercat_hardware','zfc_linear_shuttle_controller','zfc_bringup'):
+ prefix=subprocess.check_output(['ros2','pkg','prefix',pkg],text=True).strip(); assert prefix==str(root/'install'/pkg); print('OVERLAY',prefix,flush=True)
+for lib in ('zfc_ethercat_core','zfc_ethercat_hardware','zfc_linear_shuttle_controller'):
+ path=root/'install'/lib/'lib'/('lib'+lib+'.so'); print('LIBRARY',path.resolve(),hashlib.sha256(path.read_bytes()).hexdigest(),flush=True)
+rclpy.init(); node=rclpy.create_node('zfc_single_run_observer')
+def call(srv,name,req=None):
+ client=node.create_client(srv,name if name.startswith('/') else '/controller_manager/'+name)
+ assert client.wait_for_service(timeout_sec=10), name
+ future=client.call_async(req or srv.Request()); t=time.monotonic(); rclpy.spin_until_future_complete(node,future,timeout_sec=35)
+ assert future.done(), 'Single service request timed out: '+name
+ result=future.result(); node.destroy_client(client); print('SERVICE',name,'seconds',time.monotonic()-t,result,flush=True); return result
+
+def state(label):
+ request=SetHardwareComponentState.Request(); request.name='EthercatSystem'; request.target_state.label=label
+ return call(SetHardwareComponentState,'set_hardware_component_state',request)
+def switch(active):
+ request=SwitchController.Request(); request.strictness=2; request.timeout.sec=5
+ if active: request.activate_controllers=['linear_shuttle_controller']
+ else: request.deactivate_controllers=['linear_shuttle_controller']
+ return call(SwitchController,'switch_controller',request)
+def records():
+ content=logpath.read_text()
+ assert 'Failed to lock memory' not in content and 'Could not lock memory' not in content
+ result=[dict(item.split('=',1) for item in line.split('ZFC ',1)[1].split()) for line in content.splitlines() if 'ZFC ' in line]
+ assert not any(r['event']=='first-fault' or r['reason']!='none' for r in result), 'Latched hardware fault; inspect log'
+ assert not any(r['dropped']!='0' for r in result), 'Incomplete diagnostic evidence'
+ return result
+def ready_record(r):
+ for key,value in dict(link='1',slaves='3',wc='4',wc_state='2',ek='1/1/8',elm='1/1/8',drive='1/1/8',cia='4',mode='8',limits='0/0',ready='1',reason='none',excessive_periods='0').items(): assert r[key]==value,(key,r)
+ for key in ('x','y','z'):
+  c=r[key].split('/'); assert int(c[1])>0 and c[3]=='0' and c[4]=='0',(key,r)
+ assert int(r['max_interval_ns'])<=10000000
+
+def management(active):
+ h=call(ListHardwareComponents,'list_hardware_components'); assert len(h.component)==1 and h.component[0].state.label=='active'
+ i=call(ListHardwareInterfaces,'list_hardware_interfaces'); assert len(i.command_interfaces)==1
+ assert i.command_interfaces[0].name==axis and i.command_interfaces[0].is_available and i.command_interfaces[0].is_claimed==active
+ assert all(x.is_available for x in i.state_interfaces)
+ c=call(ListControllers,'list_controllers'); assert len(c.controller)==1 and c.controller[0].state==('active' if active else 'inactive')
+ assert c.controller[0].claimed_interfaces==([axis] if active else [])
+
+def process_evidence():
+ pids=owners(); assert len(pids)==1; pid=pids[0]
+ threads=subprocess.check_output(['ps','-L','-p',pid,'-o','pid,tid,stat,cls,rtprio,pri,psr,pcpu,comm'],text=True)
+ status=pathlib.Path('/proc',pid,'status').read_text(); maps=pathlib.Path('/proc',pid,'maps').read_text()
+ assert re.search(r'\bFF\s+50\b',threads); assert int(re.search(r'VmLck:\s+(\d+)',status)[1])>0
+ assert str(root/'build/colcon/zfc_ethercat_hardware/libzfc_ethercat_hardware.so') in maps
+ (evidence/'single-motion-process.txt').write_text(threads+status+maps)
+ print(threads,'VmLck:',re.search(r'VmLck:.*',status)[0],flush=True)
+
+with logpath.open('w') as log:
+ launch=subprocess.Popen(['ros2','launch','zfc_bringup','local.launch.py'],cwd=root,stdout=log,stderr=subprocess.STDOUT)
+ motion_attempted=False
+ try:
+  # Wait for the inactive spawner to finish; no lifecycle callback is repeated.
+  for _ in range(15):
+   c=call(ListControllers,'list_controllers')
+   if len(c.controller)==1 and c.controller[0].state=='inactive': break
+   time.sleep(1)
+  else: raise RuntimeError('Controller did not become inactive')
+  names=['increment_counts_per_update','updates_per_leg','initial_direction','repeat','expected_update_rate_hz','update_rate']
+  req=GetParameters.Request(); req.names=names; p=call(GetParameters,'/linear_shuttle_controller/get_parameters',req)
+  values=[v.bool_value if v.type==1 else v.integer_value for v in p.values]
+  assert values==[10,1000,1,False,1000,1000],values
+  req=GetParameters.Request(); req.names=['update_rate']; assert call(GetParameters,'/controller_manager/get_parameters',req).values[0].integer_value==1000
+  assert state('active').ok
+  started=time.monotonic(); ready_at=None; origin=None
+  while time.monotonic()-started<65:
+   time.sleep(0.5); rs=records()
+   startup=[r for r in rs if r['event']=='startup-ready']
+   if startup and ready_at is None:
+    ready_record(startup[0]); ready_at=time.monotonic(); origin=int(startup[0]['target']); assert origin==int(startup[0]['actual'])
+    process_evidence(); management(False); print('READY; begin 30 second pre-motion hold',flush=True)
+   if ready_at:
+    for r in rs:
+     if r['phase']=='active':
+      ready_record(r); assert r['claimed']=='0' and int(r['target'])==origin and r['changes']=='0'
+    if time.monotonic()-ready_at>=30: break
+  else: raise RuntimeError('No-motion acceptance timed out')
+  management(False); process_evidence()
+  for args in (['ethercat','master','-m','0'],['ethercat','slaves','-m','0'],['ethercat','domains','-m','0']): subprocess.run(args,check=True)
+  print('ALL NO-MOTION PRECONDITIONS PASS; ACTIVATING EXACTLY ONCE',flush=True)
+  with marker.open('x') as out: out.write('Single activation request at monotonic '+str(time.monotonic())+'\n')
+  motion_attempted=True
+  assert switch(True).ok
+  management(True)
+  # Observe final hold, with immediate fault detection. No retry path exists.
+  t=time.monotonic()
+  while time.monotonic()-t<6:
+   time.sleep(0.1); rs=records()
+   for r in rs:
+    if r['phase']=='active': ready_record(r)
+  start=[r for r in rs if r['event']=='motion-start']; assert len(start)==1
+  origin=int(start[0]['actual']); assert int(start[0]['target'])==origin
+  commands=[r for r in rs if r['event']=='motion-command']; assert len(commands)==2000,len(commands)
+  for i,r in enumerate(commands,1):
+   expected=origin+10*(i if i<=1000 else 2000-i)
+   assert int(r['target'])==expected and int(r['changes'])==i,(i,r)
+   if i>1: assert int(r['writes'])==int(commands[i-2]['writes'])+1
+  holds=[r for r in rs if r['event']=='status' and r['claimed']=='1' and r['changes']=='2000']
+  assert len(holds)>=3
+  assert all(int(r['target'])==origin and abs(int(r['actual'])-origin)<=10 for r in holds)
+  assert int(commands[999]['actual'])>origin+9000
+  management(True)
+  result={'activation':start[0],'first_outbound':commands[0],'reversal':commands[999],'first_return':commands[1000],'command_return':commands[-1],'final_hold':holds[-1], 'command_count':len(commands),'hold_samples':len(holds), 'outbound_command_span_ns':int(commands[999]['mono_ns'])-int(start[0]['mono_ns']), 'total_command_span_ns':int(commands[-1]['mono_ns'])-int(start[0]['mono_ns'])}
+  (evidence/'single-motion-results.json').write_text(json.dumps(result,indent=2)+'\n')
+  print('ONE DEFAULT ROUND TRIP AND FINAL HOLD VERIFIED',json.dumps(result),flush=True)
+ finally:
+  try:
+   if motion_attempted:
+    c=call(ListControllers,'list_controllers')
+    if any(x.state=='active' for x in c.controller): assert switch(False).ok
+    i=call(ListHardwareInterfaces,'list_hardware_interfaces'); assert all(not x.is_claimed for x in i.command_interfaces)
+   assert state('inactive').ok
+   time.sleep(0.1)
+   assert 'event=shutdown-confirmed' in logpath.read_text(), 'No confirmed disable-voltage feedback'
+   assert state('unconfigured').ok
+  finally:
+   launch.send_signal(signal.SIGINT); launch.wait(timeout=20)
+   node.destroy_node(); rclpy.shutdown()
+for args in (['ethercat','master','-m','0'],['ethercat','slaves','-m','0'],['ethercat','domains','-m','0']): subprocess.run(args,check=True)
+assert not owners()
+print('NORMAL SHUTDOWN AND MASTER RELEASE COMPLETE',flush=True)

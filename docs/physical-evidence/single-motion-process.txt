@@ -1,0 +1,37 @@
+    PID     TID STAT CLS RTPRIO PRI PSR %CPU COMMAND
+  11208   11208 SLl   TS      -  19   1  0.3 ros2_control_no
+  11208   11212 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11213 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11214 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11215 SLl   TS      -  19   2  0.0 ros2_control_no
+  11208   11216 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11217 SLl   TS      -  19   0  0.0 ros2_control_no
+  11208   11218 SLl   TS      -  19   5  0.0 ros2_control_no
+  11208   11219 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11220 SLl   TS      -  19   0  0.0 ros2_control_no
+  11208   11221 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11222 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11223 SLl   TS      -  19   4  0.0 ros2_control_no
+  11208   11224 SLl   FF     50  90   2  3.4 ros2_control_no
+  11208   11225 SLl   TS      -  19   0  0.0 ros2_control_no
+  11208   11226 SLl   TS      -  19   1  0.0 ros2_control_no
+  11208   11227 SLl   TS      -  19   0  0.0 ros2_control_no
+  11208   11228 SLl   TS      -  19   0  0.0 ros2_control_no
+  11208   11229 SLl   TS      -  19   1  0.0 ros2_control_no
+Name:	ros2_control_no
+VmLck:	 1060760 kB
+aaaaea650000-aaaaea658000 r-xp 00000000 103:01 408991                    /opt/ros/humble/lib/controller_manager/ros2_control_node
+aaaaea668000-aaaaea669000 r--p 00008000 103:01 408991                    /opt/ros/humble/lib/controller_manager/ros2_control_node
+aaaaea669000-aaaaea66a000 rw-p 00009000 103:01 408991                    /opt/ros/humble/lib/controller_manager/ros2_control_node
+ffff88180000-ffff881a7000 r-xp 00000000 103:01 12197076                  /home/jetson/ezra-zfc/build/colcon/zfc_linear_shuttle_controller/libzfc_linear_shuttle_controller.so
+ffff881a7000-ffff881b6000 ---p 00027000 103:01 12197076                  /home/jetson/ezra-zfc/build/colcon/zfc_linear_shuttle_controller/libzfc_linear_shuttle_controller.so
+ffff881b6000-ffff881b7000 r--p 00026000 103:01 12197076                  /home/jetson/ezra-zfc/build/colcon/zfc_linear_shuttle_controller/libzfc_linear_shuttle_controller.so
+ffff881b7000-ffff881b8000 rw-p 00027000 103:01 12197076                  /home/jetson/ezra-zfc/build/colcon/zfc_linear_shuttle_controller/libzfc_linear_shuttle_controller.so
+ffff88440000-ffff8844e000 r-xp 00000000 103:01 12196603                  /home/jetson/ezra-zfc/install/zfc_ethercat_core/lib/libzfc_ethercat_core.so
+ffff8844e000-ffff8845d000 ---p 0000e000 103:01 12196603                  /home/jetson/ezra-zfc/install/zfc_ethercat_core/lib/libzfc_ethercat_core.so
+ffff8845d000-ffff8845e000 r--p 0000d000 103:01 12196603                  /home/jetson/ezra-zfc/install/zfc_ethercat_core/lib/libzfc_ethercat_core.so
+ffff8845e000-ffff8845f000 rw-p 0000e000 103:01 12196603                  /home/jetson/ezra-zfc/install/zfc_ethercat_core/lib/libzfc_ethercat_core.so
+ffff88460000-ffff884c4000 r-xp 00000000 103:01 12196854                  /home/jetson/ezra-zfc/build/colcon/zfc_ethercat_hardware/libzfc_ethercat_hardware.so
+ffff884c4000-ffff884d3000 ---p 00064000 103:01 12196854                  /home/jetson/ezra-zfc/build/colcon/zfc_ethercat_hardware/libzfc_ethercat_hardware.so
+ffff884d3000-ffff884d4000 r--p 00063000 103:01 12196854                  /home/jetson/ezra-zfc/build/colcon/zfc_ethercat_hardware/libzfc_ethercat_hardware.so
+ffff884d4000-ffff884d7000 rw-p 00064000 103:01 12196854                  /home/jetson/ezra-zfc/build/colcon/zfc_ethercat_hardware/libzfc_ethercat_hardware.so

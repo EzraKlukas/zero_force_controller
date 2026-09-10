@@ -1,0 +1,34 @@
+[WARN] [1789061313.914106702] [controller_manager]: [Deprecated] Passing the robot description parameter directly to the control_manager node is deprecated. Use '~/robot_description' topic from 'robot_state_publisher' instead.
+[INFO] [1789061313.914488890] [resource_manager]: Loading hardware 'EthercatSystem'
+[INFO] [1789061313.916498391] [resource_manager]: Initialize hardware 'EthercatSystem'
+[INFO] [1789061313.917538199] [resource_manager]: Successful initialization of hardware 'EthercatSystem'
+[INFO] [1789061313.917762397] [controller_manager]: Setting component 'EthercatSystem' to 'unconfigured' state.
+[INFO] [1789061313.996111756] [controller_manager]: update rate is 1000 Hz
+[INFO] [1789061313.996420341] [controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+[INFO] [1789061314.002109346] [controller_manager]: Successful set up FIFO RT scheduling policy with priority 50.
+[INFO] [1789061317.203166949] [resource_manager]: 'configure' hardware 'EthercatSystem'
+[INFO] [1789061317.204510925] [resource_manager]: Successful 'configure' of hardware 'EthercatSystem'
+[INFO] [1789061317.204560271] [resource_manager]: 'activate' hardware 'EthercatSystem'
+ZFC event=activation-enter mono_ns=69323739527888 phase=activate_startup reason=none reads=0 writes=0 period_ns=0 interval_ns=0 handoff_ns=0 link=0 slaves=0 master_al=0 wc=0 wc_state=0 ek=0/0/0 elm=0/0/0 drive=0/0/0 sw=0 cia=0 mode=0 actual=0 target=0 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=0/0/0/0/0/0/0/0 y=0/0/0/0/0/0/0/0 z=0/0/0/0/0/0/0/0
+[INFO] [1789061332.505862260] [resource_manager]: Successful 'activate' of hardware 'EthercatSystem'
+[INFO] [1789061332.508771565] [resource_manager]: 'configure' hardware 'EthercatSystem'
+[INFO] [1789061332.510280987] [resource_manager]: Successful 'configure' of hardware 'EthercatSystem'
+[INFO] [1789061332.510367837] [resource_manager]: 'activate' hardware 'EthercatSystem'
+ZFC event=activation-ready mono_ns=69339040754323 phase=active reason=none reads=0 writes=0 period_ns=0 interval_ns=0 handoff_ns=0 link=1 slaves=3 master_al=8 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=4663 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=1 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083063/1/2/0/0/0/0/1 y=1105527/1/2/0/0/0/0/1 z=4390/1/2/0/0/0/0/1
+ZFC event=first-cm-write mono_ns=69339041088669 phase=active reason=none reads=1 writes=1 period_ns=1009727 interval_ns=0 handoff_ns=256552 link=1 slaves=3 master_al=8 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=53815 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=1 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083218/1/3/0/0/0/0/1 y=1105492/1/3/0/0/0/0/1 z=4893/1/3/0/0/0/0/1
+ZFC event=first-fault mono_ns=69339041112158 phase=active reason=incomplete_wc reads=2 writes=1 period_ns=15302850036 interval_ns=89378 handoff_ns=345930 link=1 slaves=3 master_al=8 wc=0 wc_state=0 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=53815 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083218/1/3/0/0/0/0/1 y=1105492/1/3/0/0/0/0/1 z=4893/1/3/0/0/0/0/1
+ZFC event=on-error mono_ns=69339043312225 phase=active reason=incomplete_wc reads=122 writes=122 period_ns=18912 interval_ns=18912 handoff_ns=2537581 link=1 slaves=3 master_al=8 wc=0 wc_state=0 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=53815 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083218/1/3/0/0/0/0/1 y=1105492/1/3/0/0/0/0/1 z=4893/1/3/0/0/0/0/1
+ZFC event=activation-enter mono_ns=69339045325982 phase=activate_startup reason=none reads=0 writes=0 period_ns=18912 interval_ns=18912 handoff_ns=2537581 link=0 slaves=0 master_al=0 wc=0 wc_state=0 ek=0/0/0 elm=0/0/0 drive=0/0/0 sw=0 cia=0 mode=0 actual=0 target=0 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=0/0/0/0/0/0/0/0 y=0/0/0/0/0/0/0/0 z=0/0/0/0/0/0/0/0
+[INFO] [1789061347.509558403] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1789061347.509863084] [controller_manager]: Shutdown request received....
+[INFO] [1789061347.510009233] [controller_manager]: Shutting down all controllers in the controller manager.
+[INFO] [1789061348.076576254] [resource_manager]: Successful 'activate' of hardware 'EthercatSystem'
+[INFO] [1789061348.078122701] [resource_manager]: 'deactivate' hardware 'EthercatSystem'
+ZFC event=activation-ready mono_ns=69354611473597 phase=active reason=none reads=0 writes=0 period_ns=18912 interval_ns=18912 handoff_ns=0 link=1 slaves=3 master_al=10 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=4663 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=1 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083295/1/2/0/0/0/0/1 y=1105512/1/2/0/0/0/0/1 z=4541/1/2/0/0/0/0/1
+ZFC event=first-cm-write mono_ns=69354611771590 phase=active reason=none reads=1 writes=1 period_ns=3489 interval_ns=0 handoff_ns=241127 link=1 slaves=3 master_al=10 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=53815 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=1 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083183/1/3/0/0/0/0/1 y=1105468/1/3/0/0/0/0/1 z=3824/1/3/0/0/0/0/1
+ZFC event=first-fault mono_ns=69354611803527 phase=active reason=incomplete_wc reads=2 writes=1 period_ns=15568081945 interval_ns=73026 handoff_ns=314153 link=1 slaves=3 master_al=10 wc=0 wc_state=0 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=53815 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083183/1/3/0/0/0/0/1 y=1105468/1/3/0/0/0/0/1 z=3824/1/3/0/0/0/0/1
+[INFO] [1789061348.199470782] [resource_manager]: Successful 'deactivate' of hardware 'EthercatSystem'
+[INFO] [1789061348.199573473] [resource_manager]: 'shutdown' hardware 'EthercatSystem'
+[INFO] [1789061348.200121394] [resource_manager]: Successful 'shutdown' of hardware 'EthercatSystem'
+[INFO] [1789061348.201218228] [controller_manager]: Shutting down the controller manager.
+ZFC event=shutdown-confirmed mono_ns=69354734366973 phase=shutdown reason=incomplete_wc reads=39 writes=39 period_ns=27553 interval_ns=27521 handoff_ns=1536463 link=1 slaves=3 master_al=8 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=4688 cia=1 mode=8 actual=938 target=938 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=38 dropped=0 x=1083234/1/1/0/0/0/0/1 y=1105446/1/1/0/0/0/0/1 z=0/1/1/0/0/1/0/1

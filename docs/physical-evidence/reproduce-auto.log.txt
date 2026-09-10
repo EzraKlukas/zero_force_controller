@@ -1,0 +1,36 @@
+[INFO] [launch]: All log files can be found below /home/jetson/ezra-zfc/log/physical-bringup/ros/2026-09-10-10-26-19-008728-ubuntu-9555
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ros2_control_node-1]: process started with pid [9556]
+[INFO] [spawner-2]: process started with pid [9558]
+[ros2_control_node-1] [WARN] [1789061179.187523446] [controller_manager]: [Deprecated] Passing the robot description parameter directly to the control_manager node is deprecated. Use '~/robot_description' topic from 'robot_state_publisher' instead.
+[ros2_control_node-1] [INFO] [1789061179.187887041] [resource_manager]: Loading hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061179.190033954] [resource_manager]: Initialize hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061179.190897404] [resource_manager]: Successful initialization of hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061179.191147043] [resource_manager]: 'configure' hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061179.191880858] [resource_manager]: Successful 'configure' of hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061179.191923003] [resource_manager]: 'activate' hardware 'EthercatSystem'
+[ros2_control_node-1] ZFC event=activation-enter mono_ns=69185726881532 phase=activate_startup reason=none reads=0 writes=0 period_ns=0 interval_ns=0 handoff_ns=0 link=0 slaves=0 master_al=0 wc=0 wc_state=0 ek=0/0/0 elm=0/0/0 drive=0/0/0 sw=0 cia=0 mode=0 actual=0 target=0 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=0/0/0/0/0/0/0/0 y=0/0/0/0/0/0/0/0 z=0/0/0/0/0/0/0/0
+[spawner-2] [INFO] [1789061179.763360222] [spawner_linear_shuttle_controller]: waiting for service /controller_manager/list_controllers to become available...
+[ros2_control_node-1] [INFO] [1789061190.016148585] [resource_manager]: Successful 'activate' of hardware 'EthercatSystem'
+[ros2_control_node-1] ZFC event=activation-ready mono_ns=69196551047912 phase=active reason=none reads=0 writes=0 period_ns=0 interval_ns=0 handoff_ns=0 link=1 slaves=3 master_al=2 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=4663 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=1 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083134/1/1/0/0/0/0/1 y=1105845/1/1/0/0/0/0/1 z=0/1/1/0/0/1/0/1
+[ros2_control_node-1] [INFO] [1789061190.112362686] [controller_manager]: update rate is 1000 Hz
+[ros2_control_node-1] [INFO] [1789061190.112633415] [controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+[ros2_control_node-1] [INFO] [1789061190.117815715] [controller_manager]: Successful set up FIFO RT scheduling policy with priority 50.
+[ros2_control_node-1] ZFC event=first-cm-write mono_ns=69196659220070 phase=active reason=none reads=1 writes=1 period_ns=3200 interval_ns=0 handoff_ns=108001625 link=1 slaves=3 master_al=8 wc=4 wc_state=2 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=53815 cia=4 mode=8 actual=938 target=938 limits=0/0 ready=1 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083082/1/2/0/0/0/0/1 y=1105769/1/2/0/0/0/0/1 z=0/1/2/0/0/1/0/1
+[ros2_control_node-1] ZFC event=first-fault mono_ns=69196659992125 phase=active reason=incomplete_wc reads=2 writes=1 period_ns=1019679 interval_ns=907483 handoff_ns=108909108 link=1 slaves=3 master_al=8 wc=2 wc_state=1 ek=1/1/8 elm=1/1/8 drive=1/1/8 sw=4688 cia=1 mode=8 actual=939 target=938 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083227/1/2/0/0/0/0/1 y=1105865/1/2/0/0/0/0/1 z=1409/1/2/0/0/0/0/1
+[ros2_control_node-1] [INFO] [1789061190.157302314] [controller_manager]: Loading controller 'linear_shuttle_controller'
+[spawner-2] [INFO] [1789061190.171632506] [spawner_linear_shuttle_controller]: [94mLoaded [1mlinear_shuttle_controller[0m
+[ros2_control_node-1] [INFO] [1789061190.174545650] [controller_manager]: Configuring controller 'linear_shuttle_controller'
+[ros2_control_node-1] ZFC event=on-error mono_ns=69196759957060 phase=active reason=incomplete_wc reads=102 writes=102 period_ns=1000094 interval_ns=1000126 handoff_ns=208885627 link=1 slaves=3 master_al=8 wc=1 wc_state=1 ek=1/1/8 elm=1/1/8 drive=1/0/2 sw=0 cia=0 mode=0 actual=0 target=939 limits=0/0 ready=0 claimed=0 pending=0 stop_cycle=120 dropped=0 x=1083117/1/2/0/0/0/0/1 y=1105766/1/2/0/0/0/0/1 z=1463/1/2/0/0/0/0/1
+[INFO] [spawner-2]: process has finished cleanly [pid 9558]
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT) again, ignoring...
+[INFO] [ros2_control_node-1]: sending signal 'SIGINT' to process[ros2_control_node-1]
+[ros2_control_node-1] [INFO] [1789061253.466307519] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ros2_control_node-1] [INFO] [1789061253.466745996] [controller_manager]: Shutdown request received....
+[ros2_control_node-1] [INFO] [1789061253.466970035] [controller_manager]: Shutting down all controllers in the controller manager.
+[ros2_control_node-1] [INFO] [1789061253.467042837] [controller_manager]: Shutting down controller 'linear_shuttle_controller'
+[ros2_control_node-1] [INFO] [1789061253.467207098] [resource_manager]: 'shutdown' hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061253.467257052] [resource_manager]: Successful 'shutdown' of hardware 'EthercatSystem'
+[ros2_control_node-1] [INFO] [1789061253.467273628] [controller_manager]: Shutting down the controller manager.
+[ERROR] [ros2_control_node-1]: process has died [pid 9556, exit code -2, cmd '/opt/ros/humble/lib/controller_manager/ros2_control_node --ros-args --params-file /home/jetson/ezra-zfc/install/zfc_bringup/share/zfc_bringup/config/controllers.yaml --params-file /tmp/launch_params_s20_cb73'].

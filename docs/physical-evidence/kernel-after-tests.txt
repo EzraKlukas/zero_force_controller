@@ -1,0 +1,90 @@
+Sep 10 10:26:19 ubuntu kernel: EtherCAT: Requesting master 0...
+Sep 10 10:26:19 ubuntu kernel: EtherCAT: Successfully requested master 0.
+Sep 10 10:26:19 ubuntu kernel: EtherCAT 0: Domain0: Logical address 0x00000000, 54 byte, expected working counter 4.
+Sep 10 10:26:19 ubuntu kernel: EtherCAT 0:   Datagram domain0-0-main: Logical offset 0x00000000, 54 byte, type LRW.
+Sep 10 10:26:19 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:26:19 ubuntu kernel: EtherCAT 0: Starting EtherCAT-OP thread.
+Sep 10 10:26:20 ubuntu kernel: EtherCAT WARNING 0: 2 datagrams UNMATCHED!
+Sep 10 10:26:20 ubuntu kernel: EtherCAT WARNING: Datagram 00000000bae69026 (domain0-0-main) was SKIPPED 1 time.
+Sep 10 10:26:29 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 1/4.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Slave states on main device: OP.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT ERROR 0-2: AL status message 0x001B: "Sync manager watchdog".
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0-2: Acknowledged state SAFEOP.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Domain 0: 4 working counter changes - now 1/4.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Releasing master...
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Starting EtherCAT-IDLE thread.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Released.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Slave states on main device: PREOP, OP.
+Sep 10 10:26:30 ubuntu kernel: EtherCAT 0: Slave states on main device: PREOP.
+Sep 10 10:28:37 ubuntu kernel: EtherCAT: Requesting master 0...
+Sep 10 10:28:37 ubuntu kernel: EtherCAT: Successfully requested master 0.
+Sep 10 10:28:37 ubuntu kernel: EtherCAT 0: Domain0: Logical address 0x00000000, 54 byte, expected working counter 4.
+Sep 10 10:28:37 ubuntu kernel: EtherCAT 0:   Datagram domain0-0-main: Logical offset 0x00000000, 54 byte, type LRW.
+Sep 10 10:28:37 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:28:37 ubuntu kernel: EtherCAT 0: Starting EtherCAT-OP thread.
+Sep 10 10:28:37 ubuntu kernel: EtherCAT WARNING 0: 1 datagram UNMATCHED!
+Sep 10 10:28:40 ubuntu kernel: EtherCAT WARNING 0: 2 datagrams UNMATCHED!
+Sep 10 10:28:40 ubuntu kernel: EtherCAT WARNING: Datagram 0000000022c07ad6 (domain0-0-main) was SKIPPED 1 time.
+Sep 10 10:28:51 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 1/4.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 4/4.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Slave states on main device: OP.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Releasing master...
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Starting EtherCAT-IDLE thread.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Released.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT: Requesting master 0...
+Sep 10 10:28:52 ubuntu kernel: EtherCAT: Successfully requested master 0.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Domain0: Logical address 0x00000000, 54 byte, expected working counter 4.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0:   Datagram domain0-0-main: Logical offset 0x00000000, 54 byte, type LRW.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Starting EtherCAT-OP thread.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 4/4.
+Sep 10 10:28:52 ubuntu kernel: EtherCAT 0: Slave states on main device: PREOP, OP.
+Sep 10 10:28:53 ubuntu kernel: EtherCAT WARNING 0: 301 datagrams UNMATCHED!
+Sep 10 10:28:53 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 3/4.
+Sep 10 10:29:04 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 4/4.
+Sep 10 10:29:05 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 1/4.
+Sep 10 10:29:07 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 4/4.
+Sep 10 10:29:08 ubuntu kernel: EtherCAT 0: Slave states on main device: OP.
+Sep 10 10:29:08 ubuntu kernel: EtherCAT 0: Releasing master...
+Sep 10 10:29:08 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:29:08 ubuntu kernel: EtherCAT 0: Starting EtherCAT-IDLE thread.
+Sep 10 10:29:08 ubuntu kernel: EtherCAT 0: Released.
+Sep 10 10:29:08 ubuntu kernel: EtherCAT 0: Slave states on main device: PREOP.
+Sep 10 10:42:09 ubuntu kernel: EtherCAT: Requesting master 0...
+Sep 10 10:42:09 ubuntu kernel: EtherCAT: Successfully requested master 0.
+Sep 10 10:42:09 ubuntu kernel: EtherCAT 0: Domain0: Logical address 0x00000000, 54 byte, expected working counter 4.
+Sep 10 10:42:09 ubuntu kernel: EtherCAT 0:   Datagram domain0-0-main: Logical offset 0x00000000, 54 byte, type LRW.
+Sep 10 10:42:09 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:42:09 ubuntu kernel: EtherCAT 0: Starting EtherCAT-OP thread.
+Sep 10 10:42:09 ubuntu kernel: EtherCAT WARNING 0: 77 datagrams UNMATCHED!
+Sep 10 10:42:19 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 1/4.
+Sep 10 10:42:23 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 4/4.
+Sep 10 10:42:23 ubuntu kernel: EtherCAT 0: Slave states on main device: OP.
+Sep 10 10:42:54 ubuntu kernel: EtherCAT 0: Releasing master...
+Sep 10 10:42:54 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:42:54 ubuntu kernel: EtherCAT 0: Starting EtherCAT-IDLE thread.
+Sep 10 10:42:54 ubuntu kernel: EtherCAT 0: Released.
+Sep 10 10:42:54 ubuntu kernel: EtherCAT 0: Slave states on main device: PREOP.
+Sep 10 10:45:39 ubuntu kernel: EtherCAT: Requesting master 0...
+Sep 10 10:45:39 ubuntu kernel: EtherCAT: Successfully requested master 0.
+Sep 10 10:45:39 ubuntu kernel: EtherCAT 0: Domain0: Logical address 0x00000000, 54 byte, expected working counter 4.
+Sep 10 10:45:39 ubuntu kernel: EtherCAT 0:   Datagram domain0-0-main: Logical offset 0x00000000, 54 byte, type LRW.
+Sep 10 10:45:39 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:45:39 ubuntu kernel: EtherCAT 0: Starting EtherCAT-OP thread.
+Sep 10 10:45:39 ubuntu kernel: EtherCAT WARNING 0: 1 datagram UNMATCHED!
+Sep 10 10:45:51 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 1/4.
+Sep 10 10:45:57 ubuntu kernel: EtherCAT WARNING 0-2: Slave did not sync after 5000 ms.
+Sep 10 10:45:57 ubuntu kernel: EtherCAT 0: Domain 0: Working counter changed to 4/4.
+Sep 10 10:45:57 ubuntu kernel: EtherCAT 0: Slave states on main device: OP.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0: Releasing master...
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0: Master thread exited.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0: Starting EtherCAT-IDLE thread.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0: Released.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT ERROR 0-1: Failed to receive AL state datagram: Datagram initialized.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0: Slave states on main device: SAFEOP, OP + ERROR.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT ERROR 0-2: AL status message 0x001B: "Sync manager watchdog".
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0-2: Acknowledged state SAFEOP.
+Sep 10 10:46:34 ubuntu kernel: EtherCAT 0: Slave states on main device: PREOP.
+Sep 10 10:46:35 ubuntu kernel: EtherCAT WARNING: Datagram 00000000a11a96bf (master-fsm) was SKIPPED 1 time.
