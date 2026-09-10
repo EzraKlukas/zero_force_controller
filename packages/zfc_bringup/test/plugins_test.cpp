@@ -5,9 +5,11 @@
 #include "hardware_interface/resource_manager.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "pluginlib/class_loader.hpp"
+#include <chrono>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <sstream>
+#include <thread>
 using Callback = hardware_interface::CallbackReturn;
 TEST(Plugins, HardwareLoadsAndInitDoesNotRequestMaster) {
   pluginlib::ClassLoader<hardware_interface::SystemInterface> loader(
@@ -111,6 +113,12 @@ protected:
   void activate() {
     ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
     ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+    for (unsigned i = 0; i < 10 && state("ethercat/ready") != 1; ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      ASSERT_EQ(hw->read(time, period), Result::OK);
+      ASSERT_EQ(hw->write(time, period), Result::OK);
+    }
+    ASSERT_EQ(state("ethercat/ready"), 1);
     ASSERT_EQ(commands[0].get_value(), 123);
     ASSERT_EQ(hw->perform_command_mode_switch(
                   {"clearpath_axis/target_position_counts"}, {}),
@@ -123,6 +131,7 @@ protected:
     throw std::runtime_error("Missing interface: " + name);
   }
   Result cycle(double target) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
     EXPECT_EQ(hw->read(time, period), Result::OK);
     commands[0].set_value(target);
     return hw->write(time, period);
@@ -153,8 +162,8 @@ TEST_F(HardwareTest, CycleOrderAndSingleOwnership) {
   EXPECT_EQ(fake_igh::order, "ARPFSQTARPSQT");
   EXPECT_EQ(fake_igh::sends, sends + 2);
   EXPECT_EQ(fake_igh::requests, 1U);
-  EXPECT_EQ(state("ethercat/read_calls"), 2);
-  EXPECT_EQ(state("ethercat/write_calls"), 2);
+  EXPECT_EQ(state("ethercat/read_calls"), 6);
+  EXPECT_EQ(state("ethercat/write_calls"), 6);
   EXPECT_EQ(hw->perform_command_mode_switch(
                 {}, {"clearpath_axis/target_position_counts"}),
             Result::OK);
@@ -217,14 +226,18 @@ TEST_F(HardwareTest, LimitRejects) {
 TEST_F(HardwareTest, StartupTimeoutAndCleanup) {
   fake_igh::complete = false;
   ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
-  EXPECT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::ERROR);
+  EXPECT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  auto result = Result::OK;
+  for (unsigned i = 0; i < 160 && result == Result::OK; ++i)
+    result = cycle(123);
+  EXPECT_EQ(result, Result::ERROR);
   EXPECT_EQ(fake_igh::controlword(), 0);
   EXPECT_EQ(hw->on_error(rclcpp_lifecycle::State{}), Callback::SUCCESS);
   EXPECT_EQ(fake_igh::releases, 1U);
 }
 TEST_F(HardwareTest, ConfigurationFailuresReleaseOnce) {
   for (bool *failure : {&fake_igh::wrong_identity, &fake_igh::fail_domain,
-                        &fake_igh::fail_sdo, &fake_igh::fail_activate}) {
+                        &fake_igh::fail_sdo}) {
     fake_igh::reset();
     *failure = true;
     EXPECT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::FAILURE);
@@ -250,8 +263,7 @@ TEST(Plugins, ResourceManagerReadUpdateWrite) {
     EXPECT_EQ(manager.command_interface_keys().size(), 1U);
     rclcpp_lifecycle::State active(
         lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
-    ASSERT_EQ(manager.set_component_state("EthercatSystem", active),
-              hardware_interface::return_type::OK);
+
     pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
         "controller_interface", "controller_interface::ControllerInterface");
     auto controller = loader.createSharedInstance(
@@ -264,6 +276,14 @@ TEST(Plugins, ResourceManagerReadUpdateWrite) {
               lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE);
     const std::vector<std::string> names{
         "clearpath_axis/target_position_counts"};
+    ASSERT_EQ(manager.set_component_state("EthercatSystem", active),
+              hardware_interface::return_type::OK);
+    const auto startup_period = rclcpp::Duration::from_nanoseconds(1000000);
+    for (int i = 0; i < 5; ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      ASSERT_TRUE(manager.read(rclcpp::Time(0), startup_period).ok);
+      ASSERT_TRUE(manager.write(rclcpp::Time(0), startup_period).ok);
+    }
     ASSERT_TRUE(manager.perform_command_mode_switch(names, {}));
     std::vector<hardware_interface::LoanedCommandInterface> commands;
     commands.emplace_back(manager.claim_command_interface(names[0]));
@@ -276,6 +296,7 @@ TEST(Plugins, ResourceManagerReadUpdateWrite) {
               Callback::SUCCESS);
     const auto period = rclcpp::Duration::from_nanoseconds(1000000);
     for (int i = 1; i <= 2010; ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
       const rclcpp::Time time(std::int64_t(i) * 1000000);
       ASSERT_TRUE(manager.read(time, period).ok);
       ASSERT_EQ(controller->update(time, period),
@@ -293,4 +314,75 @@ TEST(Plugins, ResourceManagerReadUpdateWrite) {
     EXPECT_EQ(fake_igh::releases, 1U);
   }
   rclcpp::shutdown();
+}
+
+TEST_F(HardwareTest, ActivationIsPromptAndStartupIsIncremental) {
+  ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  EXPECT_EQ(fake_igh::sends, 0U);
+  const auto before = std::chrono::steady_clock::now();
+  ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  EXPECT_LT(std::chrono::steady_clock::now() - before,
+            std::chrono::milliseconds(10));
+  EXPECT_EQ(fake_igh::sends, 0U);
+  EXPECT_EQ(state("ethercat/ready"), 0);
+  EXPECT_EQ(hw->perform_command_mode_switch(
+                {"clearpath_axis/target_position_counts"}, {}),
+            Result::ERROR);
+  // A supplied period including prior lifecycle work is not an actual cyclic
+  // gap.
+  for (unsigned i = 0; i < 3; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_EQ(hw->read(time, rclcpp::Duration::from_seconds(15)), Result::OK);
+    ASSERT_EQ(hw->write(time, period), Result::OK);
+    EXPECT_EQ(fake_igh::target(), 123);
+    EXPECT_EQ(fake_igh::sends, i + 1);
+  }
+  EXPECT_EQ(cycle(99999), Result::OK);
+  EXPECT_EQ(state("ethercat/ready"), 1);
+  EXPECT_EQ(fake_igh::target(), 123);
+}
+TEST_F(HardwareTest, StartupCatchupDoesNotFloodBus) {
+  ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  ASSERT_EQ(hw->read(time, period), Result::OK);
+  ASSERT_EQ(hw->write(time, period), Result::OK);
+  const auto sends = fake_igh::sends;
+  ASSERT_EQ(hw->read(time, period), Result::OK);
+  ASSERT_EQ(hw->write(time, period), Result::OK);
+  EXPECT_EQ(fake_igh::sends, sends);
+}
+TEST_F(HardwareTest, ActualGapStillStops) {
+  activate();
+  std::this_thread::sleep_for(std::chrono::milliseconds(12));
+  EXPECT_EQ(cycle(133), Result::OK);
+  EXPECT_EQ(state("ethercat/ready"), 0);
+  EXPECT_EQ(fake_igh::target(), 123);
+  finish_fault();
+}
+TEST_F(HardwareTest, MasterActivationFailureReleasesOnce) {
+  ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  fake_igh::fail_activate = true;
+  EXPECT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::ERROR);
+  EXPECT_EQ(fake_igh::releases, 1U);
+  hw->on_cleanup(rclcpp_lifecycle::State{});
+  EXPECT_EQ(fake_igh::releases, 1U);
+}
+
+TEST_F(HardwareTest, FirstFaultSurvivesConsequencesAndErrorCleanup) {
+  testing::internal::CaptureStderr();
+  activate();
+  fake_igh::complete = false;
+  EXPECT_EQ(cycle(133), Result::OK);
+  fake_igh::link = false;
+  fake_igh::drive_fault = true;
+  finish_fault();
+  hw.reset(); // Join the consumer before examining its complete output.
+  const auto diagnostic = testing::internal::GetCapturedStderr();
+  const auto first = diagnostic.find("event=first-fault");
+  ASSERT_NE(first, std::string::npos);
+  EXPECT_EQ(diagnostic.find("event=first-fault", first + 1), std::string::npos);
+  EXPECT_NE(diagnostic.find("reason=incomplete_wc", first), std::string::npos);
+  EXPECT_EQ(diagnostic.find("reason=master_link"), std::string::npos);
+  EXPECT_EQ(diagnostic.find("reason=drive_csp_loss"), std::string::npos);
+  EXPECT_NE(diagnostic.find("event=on-error"), std::string::npos);
 }

@@ -73,7 +73,7 @@ Clearpath::Command StopSequence::next() noexcept {
   return command_;
 }
 
-bool EthercatSystem::configure(std::string &error) {
+bool EthercatSystem::configure(std::string &error, bool activate_now) {
   if (ctx_.master) {
     error = "EtherCAT master already owned";
     return false;
@@ -150,7 +150,22 @@ bool EthercatSystem::configure(std::string &error) {
 
     ecrt_slave_config_dc(ctx_.clearpath_config, Clearpath::kDcAssignActivate,
                          kPeriodNs, Clearpath::kSync0ShiftNs, 0, 0);
-    if (ecrt_master_activate(master) != 0) {
+    return !activate_now || activate(error);
+  } catch (const std::exception &exception) {
+    error = exception.what();
+    release();
+    return false;
+  }
+}
+bool EthercatSystem::activate(std::string &error) {
+  if (configured())
+    return true;
+  if (!ctx_.master || !ctx_.domain) {
+    error = "Master/domain not configured";
+    return false;
+  }
+  try {
+    if (ecrt_master_activate(ctx_.master) != 0) {
       throw std::runtime_error("Failed to activate EtherCAT master.\n");
     }
 
@@ -169,6 +184,7 @@ bool EthercatSystem::configure(std::string &error) {
     return false;
   }
 }
+
 void EthercatSystem::release() noexcept {
   if (ctx_.master)
     ecrt_release_master(ctx_.master);

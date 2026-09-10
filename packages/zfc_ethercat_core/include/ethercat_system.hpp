@@ -55,7 +55,8 @@ public:
   ~EthercatSystem() { release(); }
   EthercatSystem(const EthercatSystem &) = delete;
   EthercatSystem &operator=(const EthercatSystem &) = delete;
-  bool configure(std::string &error);
+  bool configure(std::string &error, bool activate_now = true);
+  bool activate(std::string &error);
   void release() noexcept;
   bool configured() const noexcept { return ctx_.domain_data != nullptr; }
   // application_ns is CLOCK_MONOTONIC, never ROS/system epoch time.

@@ -1,4 +1,4 @@
-"""Local-only control. Hardware enables CSP; the motion controller starts inactive."""
+"""Local-only control. Hardware starts unconfigured; the motion controller starts inactive."""
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription

@@ -47,6 +47,8 @@ struct DiagnosticRecord {
   std::uint64_t mono_ns = 0, reads = 0, writes = 0, interval_ns = 0,
                 handoff_ns = 0;
   std::int64_t period_ns = 0;
+  std::uint64_t command_changes = 0, excessive_periods = 0,
+                maximum_interval_ns = 0, maximum_tracking_counts = 0;
   zfc::Snapshot snapshot{};
   double target = 0;
   bool claimed = false, read_pending = false;
@@ -124,7 +126,13 @@ private:
                    c.raw_sample, c.number_of_samples, c.input_cycle_counter,
                    c.error, c.txpdo_state, c.underrange, c.overrange, c.diag);
     }
-    std::fprintf(stderr, "\n");
+    std::fprintf(stderr,
+                 " changes=%llu excessive_periods=%llu max_interval_ns=%llu "
+                 "max_tracking_counts=%llu\n",
+                 (unsigned long long)r.command_changes,
+                 (unsigned long long)r.excessive_periods,
+                 (unsigned long long)r.maximum_interval_ns,
+                 (unsigned long long)r.maximum_tracking_counts);
   }
   static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
   std::array<DiagnosticRecord, 4096> records_{};

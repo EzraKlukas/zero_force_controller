@@ -150,7 +150,7 @@ EthercatHardware::on_configure(const rclcpp_lifecycle::State &) {
   first_fault_ = {};
   fault_reported_ = false;
   std::string error;
-  if (!core_.configure(error)) {
+  if (!core_.configure(error, false)) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s",
                  error.c_str());
     return Callback::FAILURE;
@@ -163,31 +163,29 @@ EthercatHardware::on_activate(const rclcpp_lifecycle::State &) {
   diagnostics_.push(record("activation-enter"));
   std::string error;
   PrefaultStack();
-  stop_complete_ = false;
-  if (!core_.startup(startup_timeout_, error)) {
+  if (!core_.activate(error)) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s",
                  error.c_str());
-    fault(FaultReason::startup_timeout);
-    stop();
-    report_fault();
     return Callback::ERROR;
   }
+  stop_complete_ = false;
   fault_ = false;
   active_ = true;
+  starting_ = true;
   claimed_ = false;
   read_pending_ = false;
-  last_read_ns_ = 0;
-  previous_ = core_.snapshot().motor.actual_position;
-  command_ = previous_;
-  copy_state();
-  activation_end_ns_ = zfc::MonotonicNs();
+  skipped_ = false;
+  last_read_ns_ = last_exchange_ns_ = 0;
+  maximum_interval_ns_ = maximum_tracking_counts_ = 0;
+  startup_begin_ns_ = activation_end_ns_ = zfc::MonotonicNs();
   first_write_ = true;
-  phase_ = "active";
-  diagnostics_.push(record("activation-ready"));
+  copy_state();
+  diagnostics_.push(record("activation-armed"));
   return Callback::SUCCESS;
 }
+
 bool EthercatHardware::stop() noexcept {
-  active_ = claimed_ = false;
+  active_ = claimed_ = starting_ = false;
   read_pending_ = false;
   if (stop_complete_ || !core_.configured())
     return true;
@@ -247,7 +245,7 @@ void EthercatHardware::copy_state() noexcept {
   state_[10] = zfc::ElmChannelValid(s.elm.x);
   state_[11] = zfc::ElmChannelValid(s.elm.y);
   state_[12] = zfc::ElmChannelValid(s.elm.z);
-  state_[13] = active_ && !fault_ && s.ready;
+  state_[13] = active_ && !starting_ && !fault_ && s.ready;
   state_[14] = s.bus.master.link_up;
   state_[15] = s.bus.master.slaves_responding;
   state_[16] = s.bus.domain.working_counter;
@@ -266,6 +264,10 @@ DiagnosticRecord EthercatHardware::record(const char *event) const noexcept {
   r.handoff_ns = activation_end_ns_ && read_entry_ns_ >= activation_end_ns_
                      ? read_entry_ns_ - activation_end_ns_
                      : 0;
+  r.command_changes = command_changes_;
+  r.excessive_periods = state_[23];
+  r.maximum_interval_ns = maximum_interval_ns_;
+  r.maximum_tracking_counts = maximum_tracking_counts_;
   r.snapshot = core_.snapshot();
   r.target = command_;
   r.claimed = claimed_;
@@ -309,17 +311,20 @@ EthercatHardware::Result EthercatHardware::perform_command_mode_switch(
     command_ = previous_ = core_.snapshot().motor.actual_position;
   }
   if (HasCommand(start)) {
-    if (!active_ || fault_ || !core_.snapshot().ready)
+    if (!active_ || starting_ || fault_ || !core_.snapshot().ready)
       return Result::ERROR;
     command_ = previous_ = core_.snapshot().motor.actual_position;
     claimed_ = true;
+    command_changes_ = 0;
+    observed_target_ = previous_;
+    diagnostics_.push(record("motion-start"));
   }
   return Result::OK;
 }
 EthercatHardware::Result
 EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
   ++state_[19];
-  if (!core_.configured())
+  if (!active_ || !core_.configured())
     return Result::OK;
   if (!prefaulted_) {
     PrefaultStack();
@@ -329,9 +334,29 @@ EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
   read_entry_ns_ = now;
   interval_ns_ = last_read_ns_ ? now - last_read_ns_ : 0;
   supplied_period_ns_ = period.nanoseconds();
-  core_.read(now); // Humble supplies system-time stamps; IgH requires our
-                   // monotonic basis.
-  if (active_) {
+  maximum_interval_ns_ = std::max(maximum_interval_ns_, interval_ns_);
+  last_read_ns_ = now;
+  skipped_ = false;
+  // CM may catch up after a lifecycle callback. Never flood the bus.
+  if (last_exchange_ns_ && now - last_exchange_ns_ < 500000) {
+    skipped_ = true;
+    if (!starting_)
+      fault(FaultReason::cm_period);
+    return Result::OK;
+  }
+  last_exchange_ns_ = now;
+  core_.read(now);
+  if (starting_ && !fault_) {
+    if (first_write_ && now - activation_end_ns_ > 10000000)
+      fault(FaultReason::monotonic_gap);
+    else if (now - startup_begin_ns_ >
+             static_cast<std::uint64_t>(startup_timeout_ * 1e9))
+      fault(FaultReason::startup_timeout);
+    else if (interval_ns_ > 10000000)
+      fault(FaultReason::monotonic_gap);
+    // Expected startup PDO/drive/ELM states are gated by the startup deadline.
+  }
+  if (active_ && !starting_) {
     const auto &s = core_.snapshot();
     const auto &b = s.bus;
     if (!b.master.link_up)
@@ -354,13 +379,12 @@ EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
     if (period.nanoseconds() > 1500000)
       ++state_[23];
     // Independently bound a scheduling gap even if ROS time jumps.
-    if (last_read_ns_ && interval_ns_ > 10000000)
+    if (interval_ns_ && interval_ns_ > 10000000)
       fault(FaultReason::monotonic_gap);
-    if (last_read_ns_ &&
+    if (interval_ns_ &&
         (period.nanoseconds() <= 0 || period.nanoseconds() > 10000000))
       fault(FaultReason::cm_period);
   }
-  last_read_ns_ = now;
   read_pending_ = true;
   copy_state();
   return Result::OK;
@@ -368,7 +392,9 @@ EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
 EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
                                                  const rclcpp::Duration &) {
   ++state_[20];
-  if (!core_.configured())
+  if (!active_ || !core_.configured())
+    return Result::OK;
+  if (skipped_)
     return Result::OK;
   if (active_ && !read_pending_)
     fault(FaultReason::sequencing);
@@ -376,7 +402,17 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
   Clearpath::Command output{};
   output.mode_op = CiA402::kModeCsp;
   output.target_position = previous_;
-  if (active_ && !fault_) {
+  if (starting_ && !fault_) {
+    CiA402::UpdateCSPEnableState(core_.snapshot().motor, &output);
+    output.target_position = core_.snapshot().motor.actual_position;
+    command_ = previous_ = output.target_position;
+    if (core_.snapshot().ready) {
+      starting_ = false;
+      phase_ = "active";
+      copy_state();
+      diagnostics_.push(record("startup-ready"));
+    }
+  } else if (active_ && !fault_) {
     {
       std::int32_t counts;
       const auto validation = zfc::ValidateCommand(
@@ -413,7 +449,18 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
       output.controlword = CiA402::kControlwordShutdown;
   }
   core_.write(output);
+  if (claimed_ && !fault_) {
+    const auto error = std::int64_t(output.target_position) -
+                       core_.snapshot().motor.actual_position;
+    maximum_tracking_counts_ = std::max(
+        maximum_tracking_counts_, std::uint64_t(error < 0 ? -error : error));
+  }
   report_fault();
+  if (claimed_ && !fault_ && output.target_position != observed_target_) {
+    observed_target_ = output.target_position;
+    ++command_changes_;
+    diagnostics_.push(record("motion-command"));
+  }
   if (first_write_) {
     diagnostics_.push(record("first-cm-write"));
     first_write_ = false;

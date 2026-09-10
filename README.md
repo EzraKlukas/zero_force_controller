@@ -14,8 +14,9 @@ updates hold `P`. Each leg spans 10,000 counts and takes one second **when
 updates run at 1 kHz**. This specifies commanded position; physical tracking
 must be verified. ELM values are signed raw PDO samples, not volts or newtons.
 
-Launch enables the hardware into CSP hold but loads the trajectory controller
-**inactive**. The operator explicitly activates motion after the physical
+Launch leaves hardware **unconfigured** and loads the trajectory controller
+**inactive**. Activate hardware explicitly, then wait for `startup-ready` and a
+30-second fault-free hold before activating the controller. The operator explicitly activates motion after the physical
 checks below. The default is one round trip, not indefinite repetition.
 
 ## Layout and ownership
@@ -35,7 +36,7 @@ packages/
     src/{main,drive_logic}.cpp
   zfc_ethercat_hardware/
     CMakeLists.txt, package.xml, plugins.xml
-    include/zfc_ethercat_hardware/ethercat_hardware.hpp
+    include/zfc_ethercat_hardware/{ethercat_hardware,diagnostics}.hpp
     src/ethercat_hardware.cpp
   zfc_linear_shuttle_controller/
     CMakeLists.txt, package.xml, plugins.xml
@@ -50,7 +51,9 @@ packages/
     test/{test_configuration.py,plugins_test.cpp,fake_igh.hpp,fake_igh.cpp}
 docs/
   standalone.md                       original zero-force reference documentation
-  verification.md                     implementation verification record
+  verification.md                     original offline verification record
+  physical-bringup.md                 measured failure, fix and physical acceptance
+  physical-evidence/                  retained logs and single-run command evidence
 ```
 
 `zfc_ethercat_core` is a shared, ROS-independent library. `EthercatSystem` owns
@@ -73,7 +76,9 @@ SDOs, PDO layout, DC settings and CSV output.
 `zfc_ethercat_hardware/EthercatHardware` is one `SystemInterface` for the
 entire coupled bus. It adapts lifecycle, validates the interface contract and
 commands, owns the motion safety gate and exports scalar diagnostics. It has
-no worker thread. `zfc_linear_shuttle_controller/LinearShuttleController`
+no EtherCAT worker thread. A preallocated SPSC queue feeds a non-realtime
+diagnostic consumer that never accesses IgH.
+`zfc_linear_shuttle_controller/LinearShuttleController`
 claims only the target-count command and reads actual counts and readiness.
 It has no EtherCAT calls. Its separate `Shuttle` state machine has no ROS calls
 or heap storage. Bring-up supplies a direct robot-description parameter,
@@ -108,22 +113,29 @@ monotonic deadline, so the hardware adapter samples `CLOCK_MONOTONIC` at read
 entry. It never feeds the ROS epoch into IgH. The **clock basis, ordering, DC
 settings and every-other-cycle reference synchronization are preserved**; the
 application-time sample reflects actual entry in the CM path. Validating the
-resulting DC phase and jitter on the real drive is still required.
+resulting DC phase under other deployment loads remains a commissioning task.
+The physical acceptance measurements are in [the bring-up report](docs/physical-bringup.md).
 
 Hardware/controller rates are fixed to 1000 Hz in this pass. The supplied
 period is checked, not used to integrate motion: observations above 1.5 ms are
 counted; a nonpositive period or a gap over 10 ms stops the trajectory. Hardware
 also checks the elapsed monotonic read-to-read gap. Jitter never causes extra
 steps, larger increments or time-based catch-up. Humble itself may schedule
-catch-up cycles; missed deadlines remain a deployment concern.
+catch-up cycles. During startup, calls less than 0.5 ms after the previous
+exchange skip the entire read/write exchange, without sleeping or advancing a
+trajectory. After readiness such a catch-up faults and starts the bounded stop
+at the next eligible exchange. This prevents a burst from consuming a PDO
+response before its frame can return. Startup ignores a supplied period that
+includes lifecycle blocking; it independently enforces actual monotonic gaps
+and the startup deadline. Runtime period/WC/ELM/drive guards remain enabled.
 
 ## Hardware lifecycle and failure handling
 
 | Transition/path | Behavior |
 | --- | --- |
 | `on_init` | Parse finite startup timeout `(0,300]` seconds, require 1000 Hz and maximum increment 10, validate all interface names; initialize memory only. No master request. |
-| `on_configure` | Request master 0, verify identities at 0:0 / 0:1 / 0:2, create domain/configs, queue original ELM SDOs/PDOs and ClearPath CSP PDOs, set original DC parameters, activate master, get domain memory, initialize disabled output. Partial failures release ownership. |
-| `on_activate` | Bounded 1 kHz lifecycle exchange loop, default timeout 20 s. Run existing CiA-402 enable logic, mirror actual position on every startup cycle including the first enabled cycle. Require full readiness; seed command and last accepted target from actual. Return with no background loop. Failure reports link, slave count, WC, OP states, statusword, mode and ELM validity, then performs bounded shutdown. |
+| `on_configure` | Request master 0, verify identities at 0:0 / 0:1 / 0:2, create domain/configs, queue original ELM SDOs/PDOs and ClearPath CSP PDOs, set original DC parameters. Defer master activation/domain memory until `on_activate`. Partial failures release ownership. |
+| `on_activate` | Activate IgH, get domain memory, initialize disabled output and arm startup; return promptly without a loop or sleep. Each ordinary CM read/write advances one CiA-402 startup step, mirroring actual position. Full readiness must arrive within 20 s. Hardware lifecycle `active` during startup does not mean `ethercat/ready=1`; the controller cannot claim motion until ready. The first exchange handoff is measured and bounded to 10 ms. |
 | Active `read` | One shared receive/process operation; copy feedback and readiness into preallocated state handles. Latch faults immediately and clear `ready`; never log, allocate, sleep or publish. |
 | Active `write` | Validate count command, drive/bus gate and limits; then shared PDO/DC/queue/send. Faults replace motion immediately with the stop sequence. No sleeps, logging, allocation or publication. |
 | Controller stop/unload | The realtime command-mode switch releases the claim and captures actual as the hold target. Stale controller storage is ignored. Reclaiming reseeds both hardware and controller. Controller update errors mark the command invalid; the stop switch preserves the hardware fault response. |
@@ -151,7 +163,9 @@ Active faults return `OK` while sending the bounded stop, then `ERROR`; this
 is deliberate because Humble can invoke `on_error` directly from the I/O call.
 Returning an error on the first bad sample could stop all subsequent exchanges
 before shutdown frames were sent. Fault counters and ready=0 are visible
-during this interval. Counters reset on cleanup/error recovery. Explicit
+during this interval. Counters reset on cleanup/error recovery. The first-fault record survives
+error cleanup and is reset only on explicit configuration. A subsequent loss
+of WC or drive state cannot overwrite the first cause. Explicit
 lifecycle exchanges occur under Humble Resource Manager serialization, not
 concurrently with active I/O. Do not run hardware lifecycle services while a
 motion controller is active; deactivate the controller first.
@@ -212,7 +226,7 @@ ldd ./build/compat/zero_force_controller
 
 # Five explicit colcon packages; exclude the root compatibility project:
 colcon build --base-paths packages --build-base build/colcon \
-  --install-base install --executor sequential --cmake-args -DBUILD_TESTING=ON
+  --install-base install --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=ON
 source install/setup.bash
 colcon test --base-paths packages --build-base build/colcon \
   --install-base install --executor sequential --event-handlers console_direct+
@@ -250,9 +264,10 @@ Do not replace the working IgH installation as part of this integration.
 
 Controller Manager 2.54.0 requests FIFO priority 50 and memory locking with
 the supplied YAML. Confirm its success messages; do not treat a successful
-launch as proof of realtime operation. In this session `ulimit -r` was 0,
-so the normal user needs administrator-provided realtime permissions before
-motion tests. The standalone retains its own best-effort FIFO/mlock setup.
+launch as proof of realtime operation. The physical test shell had rtprio
+soft/hard limits 99, unlimited memlock, and membership in `realtime` and
+`ethercat`. An unprivileged FIFO/50 probe and the actual CM thread were verified.
+The standalone retains its own best-effort FIFO/mlock setup.
 Both paths prefault stack storage; the hardware touches 8 KiB on the CM thread
 on its first read, and its fixed state/command storage is initialized before
 activation. This does not prove that every middleware or runtime page is
@@ -272,7 +287,18 @@ this repository:
 
 Grant the operator access to `/dev/EtherCAT0` through the site's existing
 IgH udev/group configuration. Do not make it world-writable. Verify device
-ownership, `id`, `ulimit -r`, and `ulimit -l` before launching. PREEMPT_RT is
+ownership and the exact launch shell before every physical test:
+
+```bash
+id; id -nG
+ulimit -Sr; ulimit -Hr; ulimit -Sl; ulimit -Hl
+prlimit --pid $$ --rtprio --memlock
+chrt --fifo 50 sh -c 'chrt --pid $$'
+# Once CM is running (use its PID from the launch log):
+ps -L -p <pid> -o pid,tid,stat,cls,rtprio,pri,psr,pcpu,comm
+cat /proc/<pid>/status   # require nonzero VmLck and no mlock failure
+```
+ PREEMPT_RT is
 already present on this Jetson; kernel/IRQ tuning is a deployment task.
 
 CPU affinity is optional deployment policy, not embedded in these packages.
@@ -298,8 +324,11 @@ Do not choose a core blindly based on this example.
 4. Verify master/slave state and realtime/device permissions. Stop any other
    EtherCAT application. Launch initially with the trajectory inactive.
 5. Confirm active hardware, inactive controller and available raw interfaces.
-   Check drive CSP/hold, ELM validity and the mechanism using commissioning
-   instruments. This pass intentionally supplies no value broadcaster.
+   Wait for `ZFC event=startup-ready`, then at least 30 seconds of `status`
+   records with reason=none, ready=1, WC=4/state=2, all slaves=1/1/8,
+   cia=4/mode=8, limits=0/0 and claimed=0. ELM X/Y/Z must each have samples,
+   error=0 and TxPDO-state=0. Verify target=actual at startup and stable hold.
+   These records come from the diagnostic consumer, with no DDS data path.
 6. Activate once. Expect two seconds of commanded motion and then hold.
    Stop immediately for wrong direction, unexpected motion, limit assertion,
    fault, jitter or loss of readiness. Do not automatically retry a fault.
@@ -312,10 +341,12 @@ Read-only IgH checks (these do not activate or command the master):
 ```bash
 sudo ethercat master -m 0
 sudo ethercat slaves -m 0
+sudo ethercat domains -m 0
 ls -l /dev/EtherCAT0
 ```
 
 Expect positions 0/1/2 to be EK1100, ELM3604-0002 and ClearPath EC, respectively.
+The configured `ethercat` group can run these read-only commands without sudo.
 PREOP before the application configures the bus can be normal. With the
 application active, require OP, link up and complete working counter.
 
@@ -340,11 +371,15 @@ cd /home/jetson/ezra-zfc
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 export ROS_LOCALHOST_ONLY=1
+# Launch starts hardware unconfigured, with the trajectory inactive.
+# This returns promptly; readiness progresses over the next several seconds:
+ros2 control set_hardware_component_state EthercatSystem active -c /controller_manager
 ros2 control list_hardware_components -c /controller_manager
 ros2 control list_hardware_interfaces -c /controller_manager
 ros2 control list_controllers -c /controller_manager
 
-# Only after the physical checklist; this starts the one-round-trip motion:
+# Wait for startup-ready and the complete 30-second hold checklist.
+# Only then, once, start the one-round-trip motion:
 ros2 control set_controller_state linear_shuttle_controller active -c /controller_manager
 ros2 control list_controllers -c /controller_manager
 
@@ -368,11 +403,24 @@ stop fails or the system is unresponsive, use the physical stop/STO. Do not
 rely on SIGKILL for safe shutdown. After a fault, inspect the drive/bus and
 restart bring-up only when the cause is understood.
 
-Expected management output names `EthercatSystem` as active and
-`linear_shuttle_controller` as inactive immediately after launch. Activation
+Expected management output names `EthercatSystem` as unconfigured and
+`linear_shuttle_controller` as inactive immediately after launch. Explicit
+hardware activation exposes interfaces while bounded startup is still underway;
+require the separate ready flag before motion. Activation
 claims `clearpath_axis/target_position_counts`. The controller remains active
 while holding after its round trip; completion does not unload it. No 1 kHz
-console stream or raw-value DDS topic is produced.
+console formatting occurs on the control thread and no raw-value DDS topic is
+produced. The diagnostic consumer emits startup/fault/stop events, 1 Hz status,
+and a record for each changed claimed target during this acceptance pass. Its
+4096-entry fixed queue never blocks the control thread; `dropped` must remain
+zero when using the log to prove an exact command sequence. Each record has
+`CLOCK_MONOTONIC` nanoseconds, lifecycle phase, first reason, call counts, CM
+period, actual read interval, bus/slave states, CiA-402 feedback, target, limits,
+claim/sequencing/stop state and ELM channels. ELM fields are
+`raw/samples/cycle_counter/error/txpdo_state/underrange/overrange/diag`.
+`max_tracking_counts` is maximum absolute commanded-target versus last sampled
+actual position while claimed; it is not a mapped drive following-error object.
+`changes=1000` and `changes=2000` identify default reversal and return.
 
 ## Verification limits
 
@@ -382,3 +430,7 @@ integration-test executable, never into installed plugins or the standalone
 runner. It emulates process data to exercise the real core and loaded plugins;
 it does not establish physical timing, electrical compatibility, drive tracking,
 DC lock, limit wiring, actual watchdog response or stop/STO behavior.
+
+[The physical bring-up report](docs/physical-bringup.md) records the completed
+single trajectory, earlier failures, and remaining DC and post-disable movement
+limitations. Voltage disable does not establish mechanical position restraint.

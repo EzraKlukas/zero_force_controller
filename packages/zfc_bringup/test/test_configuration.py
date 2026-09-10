@@ -14,6 +14,9 @@ def test_configuration():
     assert len(system.findall(".//state_interface")) == 25
     config = yaml.safe_load((ROOT / "config" / "controllers.yaml").read_text())
     assert config["controller_manager"]["ros__parameters"]["update_rate"] == 1000
+    assert config["controller_manager"]["ros__parameters"]["hardware_components_initial_state"] == {
+        "unconfigured": ["EthercatSystem"]
+    }
     params = config["linear_shuttle_controller"]["ros__parameters"]
     assert params["increment_counts_per_update"] == 10
     assert params["updates_per_leg"] == 1000

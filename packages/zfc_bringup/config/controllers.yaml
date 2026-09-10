@@ -1,5 +1,7 @@
 controller_manager:
   ros__parameters:
+    hardware_components_initial_state:
+      unconfigured: [EthercatSystem]
     update_rate: 1000
     use_sim_time: false
     lock_memory: true

@@ -46,5 +46,10 @@ private:
   DiagnosticRecord first_fault_{};
   bool fault_reported_ = false, first_write_ = false;
   DiagnosticSink diagnostics_;
+  bool starting_ = false, skipped_ = false;
+  std::uint64_t startup_begin_ns_ = 0, last_exchange_ns_ = 0,
+                command_changes_ = 0;
+  std::int32_t observed_target_ = 0;
+  std::uint64_t maximum_interval_ns_ = 0, maximum_tracking_counts_ = 0;
 };
 } // namespace zfc_ethercat_hardware
