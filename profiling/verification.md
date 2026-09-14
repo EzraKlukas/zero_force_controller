@@ -1,16 +1,15 @@
-# Offline checkpoint evidence — 2026-09-14
+# Profiling evidence — 2026-09-14
 
-Status: **blocked before hardware trials**, not task acceptance. Existing
-Controller Manager PID 12170 / launch PID 12169 remains running; permission to
-stop that pre-existing launch normally is pending. Final read-only checks found
-master 0 Idle/inactive, no domains, three PREOP slaves, link UP, Tx errors 0 and
-lost frames 0. No physical master was requested by this work. No hardware or
-motion trial occurred, so no new physical shutdown test is claimed.
+Status: offline validation and supervised no-motion hardware characterization
+completed. Motion profiling was not run. The pre-existing launch was stopped
+with the authorized normal SIGINT and every profiling process released master 0
+normally; final read-only checks showed master Idle/inactive, three PREOP slaves,
+link UP, zero lost frames and zero EtherCAT errors.
 
-Starting branch/tree: clean `main`, current fetched `origin/main` at `77c7afa`.
 Dedicated branch: `profiling/ab-cycle-timing`. Implementation/tests commit:
-`2a4ddb3`. Physical evidence documentation is unchanged. Nothing was pushed.
-Analysis/schema/documentation are in the following local commit (see `git log`).
+`2a4ddb3`; analysis/schema/documentation commit: `c201cd8`; hardware-launch and
+matched-controller updates are uncommitted pending final review. Nothing was
+pushed. Existing physical evidence documentation remains unchanged.
 
 ## Executed validation
 
@@ -117,14 +116,44 @@ JSONs omit `-final`. Their corresponding `.bin` traces are retained, ignored.
 - Executed synthetic notebook: `results/zfc_ab_timing.executed.ipynb`.
 - Synthetic plots/statistics: `results/plots/`.
 
-**Hardware timing statistics, stock-node validation, matched physical A/B,
-production/quiet physical comparison and 1 kHz feasibility remain unavailable.**
-There is no verified worst-case time or hard-real-time proof. The next required
-step is resolving the pre-existing process, followed by supervised short matched
-holds with full readiness and normal shutdown/release verification. After those
-pass, the most useful stress test is repeated longer COARSE holds under a
-controlled representative CPU/IRQ/background-output load, recording actual
-RT-thread counters and leaving all guards unchanged.
+## Hardware no-motion evidence
 
-Smallest operator action: authorize normal SIGINT of launch PID 12169, or stop
-it normally and report that it has exited. No authority for motion is implied.
+All captures used RelWithDebInfo, COARSE probes, SCHED_FIFO priority 50 when the
+kernel permitted it, the existing EtherCAT topology, full readiness, actual
+position hold at 838 counts, `ROS_LOCALHOST_ONLY=1`, zero trace drops and zero
+fault records. Each process was stopped with SIGINT and printed
+`shutdown-confirmed`; master release was verified afterward. The stock
+`ros2_control_node` validation reached the same ready state and shut down
+cleanly without a profiler trace.
+
+| Run | Records / active cycles | period error p99 / max (ns) | active span p99 / max (ns) | misses |
+|---|---:|---:|---:|---:|
+| matched standalone, production | 100,870 / 90,000 | 11,818 / 105,792 | 53,152 / 81,984 | 0 |
+| profiling CM, production (run 03) | 95,723 / 35,239 | 20,576 / 123,072 | 71,700 / 228,736 | 0 |
+| profiling CM, quiet diagnostics | 140,700 / 56,157 | 18,368 / 41,184 | 69,088 / 83,744 | 0 |
+
+The production CM run has fewer active cycles because controller activation was
+performed after hardware readiness; run 02 is retained as a second production
+replicate (37,657 active cycles). Hold-only makes no command changes, so physical
+diagnostic construction/push samples are zero in both diagnostic modes; the
+fake-IgH FINE fixture exercises 2,000 changed-command records without motion.
+
+For the matched production CM run 03, mean exclusive stages were: CM bookkeeping
+1,021 ns before read, read wrapper 1,637 ns, hardware read 16,697 ns, dispatch to
+controller 3,329 ns, controller 429 ns (Shuttle calculation 166 ns), remaining
+update 347 ns, dispatch to write 1,060 ns, hardware write 7,152 ns, remaining
+write 385 ns and post-write bookkeeping 196 ns. These are measured partitions;
+the total A/B difference also includes scheduler lateness, adapter work and
+unexplained residual and is not labelled ROS overhead.
+
+The standalone matched run had mean active span 20,725 ns; CM run 03 had
+29,347 ns. Maximum observed values are finite-sample observations, not WCET or
+hard-real-time proof. The tested no-motion tails left roughly 0.9 ms of active
+budget and had no mapped deadline misses, but longer controlled background-load
+replicates and commanded-motion phases remain the most valuable next stress test.
+
+Raw traces and manifests are under ignored `profiling/results/hw-*`; the
+executed notebook and hardware plots are under ignored
+`profiling/results/zfc_ab_timing.executed.ipynb` and
+`profiling/results/plots-hardware/`. Motion remains gated by the physical
+confirmation requirements in the task and was not performed.

@@ -1,0 +1,19 @@
+controller_manager:
+  ros__parameters:
+    hardware_components_initial_state:
+      unconfigured: [EthercatSystem]
+    update_rate: 1000
+    use_sim_time: false
+    lock_memory: true
+    thread_priority: 50
+    linear_shuttle_controller:
+      type: zfc_linear_shuttle_controller/LinearShuttleController
+linear_shuttle_controller:
+  ros__parameters:
+    update_rate: 1000
+    increment_counts_per_update: 10
+    updates_per_leg: 1000
+    initial_direction: 1
+    repeat: false
+    hold_only: true
+    expected_update_rate_hz: 1000

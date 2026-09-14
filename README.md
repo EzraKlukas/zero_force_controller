@@ -440,5 +440,7 @@ limitations. Voltage disable does not establish mechanical position restraint.
 The [profiling workbench](profiling/README.md) contains opt-in OFF/COARSE/FINE
 probes, a shared matched hold workload, a profiling-only 2.54.0 Controller
 Manager executable, and a Jupyter analysis notebook. Production launch and
-motion defaults are unchanged. This is currently an offline-validated
-checkpoint; synthetic data must not be presented as a hardware A/B result.
+motion defaults are unchanged. Initial supervised no-motion matched standalone
+and Controller Manager traces, plus production/quiet diagnostic captures, are
+documented in `profiling/verification.md`; they are empirical observations, not
+WCET or hard-real-time proof.
