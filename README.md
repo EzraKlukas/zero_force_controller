@@ -434,3 +434,11 @@ DC lock, limit wiring, actual watchdog response or stop/STO behavior.
 [The physical bring-up report](docs/physical-bringup.md) records the completed
 single trajectory, earlier failures, and remaining DC and post-disable movement
 limitations. Voltage disable does not establish mechanical position restraint.
+
+## Cycle profiling checkpoint
+
+The [profiling workbench](profiling/README.md) contains opt-in OFF/COARSE/FINE
+probes, a shared matched hold workload, a profiling-only 2.54.0 Controller
+Manager executable, and a Jupyter analysis notebook. Production launch and
+motion defaults are unchanged. This is currently an offline-validated
+checkpoint; synthetic data must not be presented as a hardware A/B result.

@@ -10,3 +10,7 @@ build/
 install/
 log/
 __pycache__/
+
+# Timing captures and generated analysis (retain schema/notebook/fixtures).
+profiling/results/
+profiling/.venv/
