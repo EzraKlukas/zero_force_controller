@@ -1,4 +1,5 @@
 #include "ethercat_system.hpp"
+#include "cycle_timing.hpp"
 #include <cerrno>
 #include <cmath>
 #include <sstream>
@@ -193,42 +194,56 @@ void EthercatSystem::release() noexcept {
   sync_ref_counter_ = 0;
 }
 std::uint64_t EthercatSystem::read(std::uint64_t application_ns) noexcept {
+  timing::Boundary probe(timing::core_read_entry, timing::core_read_exit);
   if (!configured())
     return 0;
-  ecrt_master_application_time(ctx_.master, application_ns);
+  ZFC_FINE(application_time_ns,
+           ecrt_master_application_time(ctx_.master, application_ns);)
   const auto actual_ns = MonotonicNs();
-  ecrt_master_receive(ctx_.master);
-  ecrt_domain_process(ctx_.domain);
-  snapshot_.elm = Elm3604::ReadFeedback(ctx_.domain_data, ctx_.elm_offsets);
-  snapshot_.motor =
-      Clearpath::ReadTxPDOs(ctx_.domain_data, ctx_.clearpath_offsets);
+  ZFC_FINE(receive_api_ns, ecrt_master_receive(ctx_.master);)
+  ZFC_FINE(domain_process_ns, ecrt_domain_process(ctx_.domain);)
+  ZFC_FINE(elm_decode_ns, snapshot_.elm = Elm3604::ReadFeedback(
+                              ctx_.domain_data, ctx_.elm_offsets);)
+  ZFC_FINE(motor_decode_ns, snapshot_.motor = Clearpath::ReadTxPDOs(
+                                ctx_.domain_data, ctx_.clearpath_offsets);)
   auto &state = snapshot_.bus;
-  ecrt_master_state(ctx_.master, &state.master);
-  ecrt_domain_state(ctx_.domain, &state.domain);
-  ecrt_slave_config_state(ctx_.ek1100_config, &state.ek1100);
-  ecrt_slave_config_state(ctx_.elm3604_config, &state.elm3604);
-  ecrt_slave_config_state(ctx_.clearpath_config, &state.clearpath);
+  ZFC_FINE(state_poll_ns, ecrt_master_state(ctx_.master, &state.master);
+           ecrt_domain_state(ctx_.domain, &state.domain);
+           ecrt_slave_config_state(ctx_.ek1100_config, &state.ek1100);
+           ecrt_slave_config_state(ctx_.elm3604_config, &state.elm3604);
+           ecrt_slave_config_state(ctx_.clearpath_config, &state.clearpath);)
   state.have_master = state.have_domain = state.have_elm3604 =
       state.have_clearpath = true;
   state.last_motor_feedback = snapshot_.motor;
   state.drive_operation_enabled_csp =
       CiA402::IsOperationEnabledCSP(snapshot_.motor);
-  snapshot_.ready = ReadyToRecord(state, snapshot_.elm);
+  ZFC_FINE(readiness_ns, snapshot_.ready = ReadyToRecord(state, snapshot_.elm);)
+  ZFC_VALUE(timing::ready, snapshot_.ready);
+  ZFC_VALUE(timing::wc, state.domain.working_counter);
+  ZFC_VALUE(timing::wc_state, state.domain.wc_state);
+  ZFC_VALUE(timing::statusword, snapshot_.motor.statusword);
+  ZFC_VALUE(timing::mode, snapshot_.motor.mode_display);
+  ZFC_VALUE(timing::actual_counts, snapshot_.motor.actual_position);
   return actual_ns;
 }
 void EthercatSystem::write(const Clearpath::Command &command) noexcept {
+  timing::Boundary probe(timing::core_write_entry, timing::core_write_exit);
+  ZFC_VALUE(timing::target_counts, command.target_position);
   if (!configured())
     return;
-  Clearpath::WriteCommand(ctx_.domain_data, ctx_.clearpath_offsets, command);
+  ZFC_FINE(encode_ns, Clearpath::WriteCommand(ctx_.domain_data,
+                                              ctx_.clearpath_offsets, command);)
   if (sync_ref_counter_ != 0)
     --sync_ref_counter_;
   else {
     sync_ref_counter_ = 1;
-    ecrt_master_sync_reference_clock_to(ctx_.master, MonotonicNs());
+    ZFC_VALUE(timing::reference_sync, 1);
+    ZFC_FINE(reference_sync_ns,
+             ecrt_master_sync_reference_clock_to(ctx_.master, MonotonicNs());)
   }
-  ecrt_master_sync_slave_clocks(ctx_.master);
-  ecrt_domain_queue(ctx_.domain);
-  ecrt_master_send(ctx_.master);
+  ZFC_FINE(slave_sync_ns, ecrt_master_sync_slave_clocks(ctx_.master);)
+  ZFC_FINE(domain_queue_ns, ecrt_domain_queue(ctx_.domain);)
+  ZFC_FINE(send_api_ns, ecrt_master_send(ctx_.master);)
 }
 bool EthercatSystem::startup(double timeout_seconds, std::string &error) {
   if (!configured()) {

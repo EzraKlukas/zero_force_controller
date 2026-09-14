@@ -16,6 +16,9 @@ if(BUILD_TESTING)
   ament_add_gtest(plugins_test test/plugins_test.cpp test/fake_igh.cpp)
   ament_target_dependencies(plugins_test hardware_interface controller_interface pluginlib ament_index_cpp)
   target_link_libraries(plugins_test zfc_ethercat_core::zfc_ethercat_core)
+  add_library(fake_igh_preload SHARED test/fake_igh.cpp)
+  target_link_libraries(fake_igh_preload PRIVATE zfc_ethercat_core::zfc_ethercat_core)
+  # Not installed; used only by offline profiling smoke tests.
   # Test-only ELF interposition: every used ecrt symbol is supplied by fake_igh.
   target_link_options(plugins_test PRIVATE -Wl,--export-dynamic)
 endif()

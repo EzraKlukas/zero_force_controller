@@ -1,4 +1,5 @@
 #include "zfc_linear_shuttle_controller/linear_shuttle_controller.hpp"
+#include "cycle_timing.hpp"
 #include "pluginlib/class_list_macros.hpp"
 namespace zfc_linear_shuttle_controller {
 using Callback = controller_interface::CallbackReturn;
@@ -19,6 +20,7 @@ Callback LinearShuttleController::on_init() {
     auto_declare<std::int64_t>("updates_per_leg", 1000);
     auto_declare<std::int64_t>("initial_direction", 1);
     auto_declare<bool>("repeat", false);
+    auto_declare<bool>("hold_only", false);
     auto_declare<std::int64_t>("expected_update_rate_hz", 1000);
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
@@ -36,6 +38,7 @@ LinearShuttleController::on_configure(const rclcpp_lifecycle::State &) {
     p.initial_direction =
         get_node()->get_parameter("initial_direction").as_int();
     p.repeat = get_node()->get_parameter("repeat").as_bool();
+    p.hold_only = get_node()->get_parameter("hold_only").as_bool();
     p.expected_update_rate_hz =
         get_node()->get_parameter("expected_update_rate_hz").as_int();
     if (shuttle_.configure(p) && get_update_rate() == 1000)
@@ -66,8 +69,17 @@ LinearShuttleController::on_deactivate(const rclcpp_lifecycle::State &) {
 }
 Result LinearShuttleController::update(const rclcpp::Time &,
                                        const rclcpp::Duration &period) {
-  if (state_interfaces_[1].get_value() != 1.0 ||
-      !shuttle_.update(period.nanoseconds())) {
+  zfc::timing::Boundary probe(zfc::timing::controller_entry,
+                              zfc::timing::controller_exit);
+  ZFC_VALUE(zfc::timing::controller_active, 1);
+  const bool ready = state_interfaces_[1].get_value() == 1.0;
+  bool ok = false;
+  if (ready) {
+    zfc::timing::Boundary calculation(zfc::timing::calculation_entry,
+                                      zfc::timing::calculation_exit);
+    ok = shuttle_.update(period.nanoseconds());
+  }
+  if (!ready || !ok) {
     failed_ = true;
     // Hardware treats this sentinel as a fault and executes its bounded stop.
     command_interfaces_[0].set_value(std::numeric_limits<double>::quiet_NaN());

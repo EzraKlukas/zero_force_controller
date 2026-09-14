@@ -34,6 +34,7 @@
 #include "cia402.hpp"
 #include "clearpath_pdo.hpp"
 #include "drive_logic.hpp"
+#include "cycle_timing.hpp"
 #include "elm3604_pdo.hpp"
 #include "ethercat_system.hpp"
 using zfc::EthercatState;
@@ -489,6 +490,9 @@ RunSummary RunCyclic(zfc::EthercatSystem &core, const Options &options,
   timespec deadline = now;
   AddNs(&deadline, period_ns);
 
+#if ZFC_PROFILE_LEVEL
+  zfc::timing::managed_loop = true;
+#endif
   while (!g_stop_requested) {
     const int sleep_ret = SleepUntil(deadline);
     if (sleep_ret == EINTR && g_stop_requested) {
@@ -499,12 +503,17 @@ RunSummary RunCyclic(zfc::EthercatSystem &core, const Options &options,
       break;
     }
 
+    zfc::timing::begin();
+    ZFC_VALUE(zfc::timing::deadline_mono_ns, TimespecToNs(deadline));
+    ZFC_VALUE(zfc::timing::phase, recording ? 3 : 1);
     Elm3604::Feedback elm{};
     Clearpath::PDO::TxPDOs motor{};
     std::uint64_t actual_ns = 0;
     std::int64_t latency_ns = 0;
 
+    zfc::timing::mark(zfc::timing::hardware_read_entry);
     actual_ns = core.read(TimespecToNs(deadline));
+    zfc::timing::mark(zfc::timing::hardware_read_exit);
     latency_ns = static_cast<std::int64_t>(actual_ns) - static_cast<std::int64_t>(TimespecToNs(deadline));
     elm = core.snapshot().elm;
     motor = core.snapshot().motor;
@@ -516,6 +525,7 @@ RunSummary RunCyclic(zfc::EthercatSystem &core, const Options &options,
     state = core.snapshot().bus;
     const bool ready = core.snapshot().ready;
 
+    zfc::timing::mark(zfc::timing::controller_entry);
     if (!CiA402::IsOperationEnabledCSP(motor)) {
       hold_seeded = false;
       CiA402::UpdateCSPEnableState(motor, &command);
@@ -533,6 +543,8 @@ RunSummary RunCyclic(zfc::EthercatSystem &core, const Options &options,
       // no SI-unit calibration or force conversion.
       const CycleInputs inputs{elm, motor, summary.samples,
                                TimespecToNs(deadline), latency_ns};
+      ZFC_VALUE(zfc::timing::controller_active, 1);
+      zfc::timing::mark(zfc::timing::calculation_entry);
       if (drive_logic.FindSetPoint(inputs)) {
         if (!limitSwitchHit) {
           limitSwitchHit = drive_logic.LimitSwitchCheck(inputs);
@@ -547,6 +559,7 @@ RunSummary RunCyclic(zfc::EthercatSystem &core, const Options &options,
         }
       }
 
+      zfc::timing::mark(zfc::timing::calculation_exit);
       if ((inputs.sample_index % kTelemetryDecimation) == 0) {
         TelemetryFrame frame = drive_logic.GetTelemetry(inputs);
 
@@ -563,7 +576,12 @@ RunSummary RunCyclic(zfc::EthercatSystem &core, const Options &options,
       }
     }
 
-    core.write(command);
+    zfc::timing::mark(zfc::timing::controller_exit);
+    { zfc::timing::HardwareWrite write_probe;
+      core.write(command);
+    }
+    ZFC_VALUE(zfc::timing::fault, recording && !ready);
+    zfc::timing::finish();
 
     if (!recording) {
       if (ready) {
@@ -779,6 +797,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  zfc::timing::initialize();
   InstallSignalHandlers();
   TelemetryQueue telemetry_queue;
   TelemetryConsumerSummary telemetry_summary{};
@@ -814,6 +833,11 @@ int main(int argc, char **argv) {
   } while (false);
 
   core.release();
+#if ZFC_PROFILE_LEVEL
+  sched_param normal{};
+  sched_setscheduler(0, SCHED_OTHER, &normal);
+#endif
+  zfc::timing::flush();
   StopTelemetryConsumer(&telemetry_consumer, telemetry_summary);
 
   const bool should_write_csv =

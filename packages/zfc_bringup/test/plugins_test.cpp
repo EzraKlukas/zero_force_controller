@@ -4,6 +4,7 @@
 #include "hardware_interface/component_parser.hpp"
 #include "hardware_interface/resource_manager.hpp"
 #include "hardware_interface/system_interface.hpp"
+#include "matched_shuttle.hpp"
 #include "pluginlib/class_loader.hpp"
 #include <chrono>
 #include <fstream>
@@ -385,4 +386,70 @@ TEST_F(HardwareTest, FirstFaultSurvivesConsequencesAndErrorCleanup) {
   EXPECT_EQ(diagnostic.find("reason=master_link"), std::string::npos);
   EXPECT_EQ(diagnostic.find("reason=drive_csp_loss"), std::string::npos);
   EXPECT_NE(diagnostic.find("event=on-error"), std::string::npos);
+}
+
+TEST(Plugins, MatchedHoldEquivalenceAndRestart) {
+  rclcpp::init(0, nullptr);
+  {
+    pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
+        "controller_interface", "controller_interface::ControllerInterface");
+    auto controller = loader.createSharedInstance(
+        "zfc_linear_shuttle_controller/LinearShuttleController");
+    ASSERT_EQ(controller->init("offline_hold", "",
+                               rclcpp::NodeOptions().parameter_overrides(
+                                   {rclcpp::Parameter("update_rate", 1000),
+                                    rclcpp::Parameter("hold_only", true)})),
+              controller_interface::return_type::OK);
+    ASSERT_EQ(controller->configure().id(),
+              lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE);
+    double actual = 123, target = -999, ready = 1;
+    hardware_interface::CommandInterface cmd("clearpath_axis",
+                                             "target_position_counts", &target);
+    hardware_interface::StateInterface pos("clearpath_axis",
+                                           "actual_position_counts", &actual);
+    hardware_interface::StateInterface state("ethercat", "ready", &ready);
+    std::vector<hardware_interface::LoanedCommandInterface> commands;
+    commands.emplace_back(cmd);
+    std::vector<hardware_interface::LoanedStateInterface> states;
+    states.emplace_back(pos);
+    states.emplace_back(state);
+    controller->assign_interfaces(std::move(commands), std::move(states));
+    zfc::Shuttle standalone;
+    zfc::Parameters p;
+    p.hold_only = true;
+    ASSERT_TRUE(standalone.configure(p));
+    for (int start : {123, -456}) {
+      actual = start;
+      ASSERT_TRUE(standalone.activate(actual));
+      ASSERT_EQ(controller->on_activate(rclcpp_lifecycle::State{}),
+                Callback::SUCCESS);
+      for (int i = 0; i < 3000; ++i) {
+        ASSERT_TRUE(standalone.update(1000000));
+        ASSERT_EQ(
+            controller->update(rclcpp::Time(0),
+                               rclcpp::Duration::from_nanoseconds(1000000)),
+            controller_interface::return_type::OK);
+        EXPECT_EQ(target, standalone.target());
+      }
+      EXPECT_EQ(controller->on_deactivate(rclcpp_lifecycle::State{}),
+                Callback::SUCCESS);
+    }
+    controller->release_interfaces();
+  }
+  rclcpp::shutdown();
+}
+
+TEST_F(HardwareTest, QuietDiagnosticsRetainsFaultAndStatusContract) {
+  auto info = TestInfo();
+  info.hardware_parameters["diagnostic_mode"] = "quiet";
+  ASSERT_EQ(hw->on_init(info), Callback::SUCCESS);
+  activate();
+  EXPECT_EQ(cycle(133), Result::OK);
+  EXPECT_EQ(fake_igh::target(), 133);
+  EXPECT_EQ(cycle(std::numeric_limits<double>::quiet_NaN()), Result::OK);
+  EXPECT_EQ(state("ethercat/ready"), 0);
+  EXPECT_EQ(state("ethercat/invalid_commands"), 1);
+  finish_fault();
+  info.hardware_parameters["diagnostic_mode"] = "silent-faults";
+  EXPECT_EQ(hw->on_init(info), Callback::ERROR);
 }

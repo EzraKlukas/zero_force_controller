@@ -1,4 +1,5 @@
 #include "zfc_ethercat_hardware/ethercat_hardware.hpp"
+#include "cycle_timing.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include <algorithm>
@@ -67,13 +68,20 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
   if (SystemInterface::on_init(info) != Callback::SUCCESS)
     return Callback::ERROR;
   reset();
+  quiet_diagnostics_ = false;
+  zfc::timing::initialize();
   diagnostics_.start();
   try {
     for (const auto &[key, value] : info.hardware_parameters) {
       if (key != "startup_timeout_seconds" && key != "max_increment_counts" &&
-          key != "update_rate_hz")
+          key != "update_rate_hz" && key != "diagnostic_mode")
         throw std::runtime_error("Unknown hardware parameter: " + key);
-      if (key == "startup_timeout_seconds") {
+      if (key == "diagnostic_mode") {
+        if (value != "production" && value != "quiet")
+          throw std::runtime_error(
+              "diagnostic_mode must be production or quiet");
+        quiet_diagnostics_ = value == "quiet";
+      } else if (key == "startup_timeout_seconds") {
         std::size_t used = 0;
         startup_timeout_ = std::stod(value, &used);
         if (used != value.size() || !std::isfinite(startup_timeout_) ||
@@ -252,6 +260,7 @@ void EthercatHardware::copy_state() noexcept {
   state_[17] = s.bus.domain.wc_state == EC_WC_COMPLETE;
 }
 DiagnosticRecord EthercatHardware::record(const char *event) const noexcept {
+  zfc::timing::FineSpan probe(zfc::timing::diagnostic_construct_ns);
   DiagnosticRecord r;
   r.event = event;
   r.phase = phase_;
@@ -285,6 +294,7 @@ void EthercatHardware::fault(FaultReason reason) noexcept {
   if (first_fault_.reason == FaultReason::none) {
     first_fault_ = record("first-fault");
     first_fault_.reason = reason;
+    ZFC_VALUE(zfc::timing::fault, static_cast<int>(reason));
   }
   if (fault_)
     return;
@@ -323,6 +333,8 @@ EthercatHardware::Result EthercatHardware::perform_command_mode_switch(
 }
 EthercatHardware::Result
 EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
+  zfc::timing::HardwareRead probe;
+  ZFC_VALUE(zfc::timing::ros_period_ns, period.nanoseconds());
   ++state_[19];
   if (!active_ || !core_.configured())
     return Result::OK;
@@ -391,6 +403,15 @@ EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
 }
 EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
                                                  const rclcpp::Duration &) {
+  zfc::timing::HardwareWrite probe;
+  ZFC_VALUE(zfc::timing::phase, starting_  ? 1
+                                : fault_   ? 5
+                                : claimed_ ? 3
+                                : active_  ? 2
+                                           : 0);
+  ZFC_VALUE(zfc::timing::fault, static_cast<int>(first_fault_.reason));
+  ZFC_VALUE(zfc::timing::diagnostic_mode, quiet_diagnostics_);
+  ZFC_VALUE(zfc::timing::diagnostic_drops, diagnostics_.drops());
   ++state_[20];
   if (!active_ || !core_.configured())
     return Result::OK;
@@ -459,7 +480,9 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
   if (claimed_ && !fault_ && output.target_position != observed_target_) {
     observed_target_ = output.target_position;
     ++command_changes_;
-    diagnostics_.push(record("motion-command"));
+    ZFC_VALUE(zfc::timing::command_change, 1);
+    if (!quiet_diagnostics_)
+      diagnostics_.push(record("motion-command"));
   }
   if (first_write_) {
     diagnostics_.push(record("first-cm-write"));
