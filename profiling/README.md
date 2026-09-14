@@ -1,12 +1,13 @@
-# A/B cycle profiling — pre-hardware checkpoint
+# A/B cycle profiling
 
-See [verification.md](verification.md) for exact checks, preliminary costs, evidence paths and the blocker.
+See [verification.md](verification.md) for exact checks, profiler costs, hardware evidence and limitations.
 
-This work is **not yet an accepted hardware timing dataset**. The notebook has
-been executed on synthetic fixtures, and offline builds/tests exercise the
-profiling infrastructure. No 1 kHz feasibility claim follows from those checks.
-The physical evidence in `docs/physical-bringup.md` and `docs/physical-evidence/`
-is retained unchanged.
+The initial dataset contains supervised no-motion COARSE captures for matched
+standalone and profiling-only Controller Manager paths, plus production and
+quiet diagnostic configurations. The notebook has been executed in a clean
+kernel over the captured runs. These are finite empirical observations, not a
+WCET proof or hard-real-time guarantee. The physical evidence in
+`docs/physical-bringup.md` and `docs/physical-evidence/` is retained unchanged.
 
 ## Scope and comparison labels
 
@@ -77,8 +78,8 @@ sim-time branch and shutdown ordering. The profiling hardware continues to use
 MONOTONIC application time; standalone retains its scheduled MONOTONIC basis.
 Do not silently replace CM scheduling with a monotonic loop and call it stock.
 See [schema.md](schema.md) for mapping uncertainty and exclusive partitions.
-A stock-executable validation trial is still required before claiming this copy
-does not materially perturb timing or fault behavior.
+A stock `ros2_control_node` validation hold was run after the profiling trials;
+it reached the same full-ready state and shut down cleanly without faults.
 
 ## Build and offline checks
 
@@ -153,24 +154,16 @@ Read-only preflight outside the sandbox verified the normal `jetson` account's
 SCHED_FIFO/50. Master 0 was Idle/inactive, link UP, exactly EK1100 / ELM3604-0002 /
 ClearPath EC in PREOP, zero transmit errors and lost frames.
 
-However, an existing `ros2_control_node` **PID 12170**, parent launch **12169**,
-started September 10, was still running. It had no EtherCAT device open, but its
-RT TID **12186** ran FIFO/50 on CPUs 0–5 with approximately 1,060,164 KiB locked.
-Permission to stop that existing launch normally with SIGINT was requested in
-the active session and had not been granted when this checkpoint was prepared.
-No existing process was signalled and no new hardware controller was launched.
-Read-only evidence is in ignored `results/preflight/environment.json`.
+The pre-existing launch was stopped normally before hardware work. Captures used
+the current CPUs 0–5 baseline; CPU 2 was used only for the offline microbenchmark.
+Each physical run verified full readiness, zero trace drops, no fault records,
+normal shutdown and master release. Run 02 and run 03 are separate production
+CM replicates; the standalone and quiet captures are separate variants.
 
-After resolving that ownership/baseline conflict, work still required:
-
-- Finish hardware-trial orchestration and observer manifests. Keep the current
-  CPUs 0–5 configuration as baseline; any CPU-2 pinned hardware comparison must
-  be separate. CPU 2 was used only for the offline microbenchmark.
-- Three ≥60 s COARSE matched holds per variant after ≥30 s full-readiness hold,
-  shorter FINE trials, production/quiet modes, and stock CM validation. Verify
-  actual FIFO/50 TID, equivalent locking/affinity, zero drops, first faults,
-  disable confirmation and master release after every attempt.
-- Longer repeated holds for tails only after inspecting short trials.
+Remaining work is longer repeated holds under controlled representative
+CPU/IRQ/background-output load, plus any separately authorized commanded-motion
+phase. The current no-motion hold cannot exercise changed-command diagnostic
+output, and finite captures cannot establish WCET.
 - In-cycle interface-read/write and adapter-validation inner scopes are still
   combined in measured wrapper remainders. Shutdown exchanges and separate
   DriveLogic `CalculateNextCommand` time need finer attribution. The current
