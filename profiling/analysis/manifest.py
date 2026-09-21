@@ -47,7 +47,7 @@ def process(pid,tid):
     if isinstance(maps,str):
         for line in maps.splitlines():
             name=line.split()[-1]
-            if name.startswith('/') and ('.so' in name or 'runner' in name or 'control_node' in name): hashes[name]=sha(name)
+            if name.startswith('/') and ('.so' in name or 'control_node' in name): hashes[name]=sha(name)
     return dict(pid=pid,tid=tid,status=status,process_status=read(p/'status'),stat=stat,counters=counters,
                 scheduling=scheduling,sched=read(t/'sched'),schedstat=read(t/'schedstat'),limits=read(p/'limits'),
                 maps=maps,binary_library_hashes=hashes)
@@ -68,11 +68,11 @@ def environment():
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('output');p.add_argument('--pid',type=int);p.add_argument('--tid',type=int)
-    p.add_argument('--build',type=Path);p.add_argument('--run-id',type=int,default=0);p.add_argument('--variant',type=int,default=0)
+    p.add_argument('--build',type=Path);p.add_argument('--run-id',type=int,default=0)
     p.add_argument('--level',choices=['OFF','COARSE','FINE'],default='OFF');p.add_argument('--diagnostics',choices=['production','quiet'],default='production')
     p.add_argument('--phase',default='preflight');p.add_argument('--binary',type=Path)
     a=p.parse_args()
-    result=dict(run_id=a.run_id,variant=a.variant,profiling_level=a.level,diagnostic_mode=a.diagnostics,
+    result=dict(run_id=a.run_id,profiling_level=a.level,diagnostic_mode=a.diagnostics,
                 phase=a.phase,motion_occurred=None,synthetic=False,environment=environment())
     if a.pid: result['process']=process(a.pid,a.tid or a.pid)
     if a.binary: result['binary']=dict(path=str(a.binary.resolve()),sha256=sha(a.binary),ldd=command(['ldd',str(a.binary)]))

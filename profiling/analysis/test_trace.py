@@ -16,8 +16,24 @@ class TraceTest(unittest.TestCase):
             self.assertTrue(cm_partition(d).sum(axis=1).eq(d.sleep_entry-d.cycle_entry).all())
             self.assertTrue(d.active_span_ns.eq(23000).all())
             self.assertEqual(summary(d.active_span_ns)['maximum'],23000)
+            self.assertTrue(d.execution_ns.eq(26000).all())
+            self.assertTrue(d.budget_slack_ns.eq(974000).all())
+            self.assertFalse(d.execution_overrun.any())
             self.assertFalse(d.deadline_miss.any())
             self.assertGreater(d.period_error_ns.max(),0) # A long period is NOT a deadline miss.
+    def test_execution_overrun_and_unavailable_manager_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            generate(tmp)
+            d, _, _ = load_run(Path(tmp)/'synthetic-cm')
+            from trace import metrics
+            d['sleep_entry'] = d.cycle_entry + 1_100_000
+            d = metrics(d)
+            self.assertTrue(d.execution_overrun.all())
+            self.assertTrue(d.budget_slack_ns.eq(-100000).all())
+            d['sleep_entry'] = 0
+            d = metrics(d)
+            self.assertTrue(d.execution_ns.isna().all())
+            self.assertTrue(d.execution_overrun.isna().all())
     def test_corruption_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             generate(tmp); p=Path(tmp)/'synthetic-cm/timing.bin'; data=p.read_bytes()

@@ -25,7 +25,7 @@ struct Storage {
   std::string path;
   std::unique_ptr<Record[]> data;
   std::unique_ptr<Buffer> buffer;
-  std::int64_t id = 0, variant_id = 0;
+  std::int64_t id = 0;
   ~Storage() { flush(); }
 } storage;
 thread_local Record *last_committed = nullptr;
@@ -52,7 +52,6 @@ void initialize() {
     throw std::runtime_error("trace capacity 1..2000000");
   storage.path = path;
   storage.id = env_integer("ZFC_RUN_ID", 0);
-  storage.variant_id = env_integer("ZFC_VARIANT", 0);
   storage.data = std::make_unique<Record[]>(capacity);
   // Explicit volatile page touch; zero initialization alone can use lazy pages.
   auto *bytes = reinterpret_cast<volatile unsigned char *>(storage.data.get());
@@ -65,9 +64,8 @@ void begin() noexcept {
   if (!in_cycle)
     return;
   current = {};
-  current[schema] = 1;
+  current[schema] = 2;
   current[run_id] = storage.id;
-  current[variant] = storage.variant_id;
   current[level] = ZFC_PROFILE_LEVEL;
   current[cycle] = sequence++;
   current[cycle_entry] = raw_ns();
@@ -116,7 +114,7 @@ void flush() {
     return;
   }
   const std::int64_t header[] = {0x5a464354494d4531LL,
-                                 1,
+                                 2,
                                  sizeof(Record),
                                  std::int64_t(storage.buffer->size()),
                                  std::int64_t(storage.buffer->drops()),

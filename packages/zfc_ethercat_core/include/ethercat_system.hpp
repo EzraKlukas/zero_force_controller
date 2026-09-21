@@ -28,16 +28,14 @@ struct EthercatState {
   Clearpath::PDO::TxPDOs last_motor_feedback{};
 };
 
-bool ReadyToRecord(const EthercatState &state,
-                   const Elm3604::Feedback &elm) noexcept;
+bool IsReady(const EthercatState &state, const Elm3604::Feedback &elm) noexcept;
 struct Snapshot {
   Elm3604::Feedback elm{};
   Clearpath::PDO::TxPDOs motor{};
   EthercatState bus{};
   bool ready = false;
 };
-// Cycle-driven stop sequencer: also used from active ROS write(), without
-// sleeping.
+// Cycle-driven stop sequencer used by hardware write() without sleeping.
 class StopSequence {
 public:
   void start(const Clearpath::PDO::TxPDOs &motor) noexcept;
@@ -55,7 +53,7 @@ public:
   ~EthercatSystem() { release(); }
   EthercatSystem(const EthercatSystem &) = delete;
   EthercatSystem &operator=(const EthercatSystem &) = delete;
-  bool configure(std::string &error, bool activate_now = true);
+  bool configure(std::string &error);
   bool activate(std::string &error);
   void release() noexcept;
   bool configured() const noexcept { return ctx_.domain_data != nullptr; }
@@ -63,9 +61,7 @@ public:
   std::uint64_t read(std::uint64_t application_ns) noexcept;
   void write(const Clearpath::Command &command) noexcept;
   const Snapshot &snapshot() const noexcept { return snapshot_; }
-  // Lifecycle/reference runner only: these functions exchange and sleep at 1
-  // kHz.
-  bool startup(double timeout_seconds, std::string &error);
+  // Lifecycle shutdown only: exchanges and sleeps at 1 kHz.
   bool shutdown() noexcept;
 
 private:

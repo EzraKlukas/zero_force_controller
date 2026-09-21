@@ -11,7 +11,7 @@ def owners():
  result=[]
  for entry in pathlib.Path('/proc').glob('[0-9]*/exe'):
   try:
-   if entry.readlink().name in ('ros2_control_node','zero_force_controller'): result.append(entry.parent.name)
+   if entry.readlink().name == 'ros2_control_node': result.append(entry.parent.name)
   except (FileNotFoundError,PermissionError): pass
  return result
 assert not owners(), 'Existing master owner'

@@ -22,7 +22,7 @@ def generate_launch_description():
             executable="profile_control_node",
             output="screen",
             parameters=[str(Path(get_package_share_directory("zfc_profiling")) /
-                         "config" / "matched_controllers.yaml"),
+                         "config" / "hold_controllers.yaml"),
                         {"robot_description": description}],
         ),
         Node(

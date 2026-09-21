@@ -1,4 +1,4 @@
-// ClearPath EC PDO contract used by zero_force_controller.
+// ClearPath EC PDO contract used by the EtherCAT hardware component.
 //
 // This header declares the fixed slave identity, distributed-clock parameters,
 // mapped RxPDO/TxPDO data, logical limit-bit helpers, and process-data offsets

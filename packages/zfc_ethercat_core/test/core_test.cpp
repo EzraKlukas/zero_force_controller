@@ -67,12 +67,12 @@ int main() {
       bus.elm3604.operational = bus.clearpath.online =
           bus.clearpath.operational = 1;
   bus.drive_operation_enabled_csp = true;
-  CHECK(ReadyToRecord(bus, elm));
+  CHECK(IsReady(bus, elm));
   elm.z.error = true;
-  CHECK(!ReadyToRecord(bus, elm));
+  CHECK(!IsReady(bus, elm));
   elm.z.error = false;
   bus.ek1100.operational = 0;
-  CHECK(!ReadyToRecord(bus, elm));
+  CHECK(!IsReady(bus, elm));
   // Signed raw data and packed status decoding, using actual slave accessors.
   std::array<std::uint8_t, 64> bytes{};
   Elm3604::PdoOffsets elm_offsets{};

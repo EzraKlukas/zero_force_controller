@@ -149,6 +149,9 @@ int main(int argc, char ** argv)
         // wait until we hit the end of the period
         next_iteration_time += period;
         zfc::timing::mark(zfc::timing::sleep_entry);
+#if ZFC_PROFILE_LEVEL
+        ZFC_VALUE(zfc::timing::execution_end_mono_ns, zfc::timing::mono_ns());
+#endif
         zfc::timing::finish();
         if (use_sim_time)
         {

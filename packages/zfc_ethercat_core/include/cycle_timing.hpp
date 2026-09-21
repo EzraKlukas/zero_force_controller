@@ -48,8 +48,8 @@ std::int64_t system_ns() noexcept;
 extern thread_local Record current;
 extern thread_local bool in_cycle;
 extern thread_local bool managed_loop;
-// Non-RT only. Environment: ZFC_TRACE_PATH, ZFC_TRACE_CAPACITY, ZFC_RUN_ID,
-// ZFC_VARIANT. Preallocate and touch all records before locking memory.
+// Non-RT only. Environment: ZFC_TRACE_PATH, ZFC_TRACE_CAPACITY, ZFC_RUN_ID.
+// Preallocate and touch all records before locking memory.
 void initialize();
 void flush(); // Only after ALL producers stop. Also called at process exit.
 void begin() noexcept;
@@ -89,7 +89,6 @@ struct HardwareWrite {
   ~HardwareWrite() {
     mark(hardware_write_exit);
 #if ZFC_PROFILE_LEVEL
-    value(write_exit_mono_ns, mono_ns());
     if (!managed_loop)
       finish();
 #endif

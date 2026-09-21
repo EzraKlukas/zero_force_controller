@@ -123,9 +123,7 @@ used the same binary, with initial hardware state unconfigured:
 
 ## Correction and ownership
 
-The core gained an optional deferred-activation configuration path and a
-separate `activate()` operation. The standalone's default configure/startup
-behavior remains unchanged and uses the same shared core.
+Core configuration and master activation are separate lifecycle operations.
 
 The ROS plugin configures resources without activating master/domain exchange.
 `on_activate()` activates IgH, obtains memory and arms startup, then returns
@@ -154,8 +152,9 @@ record SPSC queue feeds a non-RT consumer; it performs all formatting/output,
 never any EtherCAT operations. It records startup/stop/fault events, 1 Hz status
 and changed claimed commands, allowing exact replay of this single trajectory.
 No DDS was introduced in the control-data path. Diagnostic drops were zero.
-Temporary single-request observer scripts lived in `/tmp`; the exact acceptance
+Temporary single-request observer scripts lived in `/tmp`; the acceptance
 script is retained [as a non-executable text record](physical-evidence/acceptance-session.py.txt).
+The archived script's process inventory lists the current ROS executable name.
 Archived text logs preserve all lines with trailing whitespace trimmed; original
 byte captures remain under ignored `log/physical-bringup/`.
 The observer creates a persistent attempt marker before switching the controller active
@@ -163,52 +162,9 @@ and has no automatic retry path.
 
 ## Offline verification
 
-Final commands (from repository root, ROS sourced for colcon):
-
-```bash
-cmake -S . -B build/compat -DBUILD_TESTING=ON
-cmake --build build/compat
-ctest --test-dir build/compat --output-on-failure
-./build/compat/zero_force_controller --help
-ldd ./build/compat/zero_force_controller
-source /opt/ros/humble/setup.bash
-colcon build --base-paths packages --build-base build/colcon \
-  --install-base install --symlink-install --executor sequential \
-  --cmake-args -DBUILD_TESTING=ON
-source install/setup.bash
-ROS_LOCALHOST_ONLY=1 colcon test --base-paths packages \
-  --build-base build/colcon --install-base install --executor sequential
-colcon test-result --test-result-base build/colcon --verbose
-clang-format --dry-run --Werror \
-  packages/zfc_bringup/test/plugins_test.cpp \
-  packages/zfc_ethercat_core/include/ethercat_system.hpp \
-  packages/zfc_ethercat_core/src/ethercat_system.cpp \
-  packages/zfc_ethercat_hardware/include/zfc_ethercat_hardware/diagnostics.hpp \
-  packages/zfc_ethercat_hardware/include/zfc_ethercat_hardware/ethercat_hardware.hpp \
-  packages/zfc_ethercat_hardware/src/ethercat_hardware.cpp
-git diff --check
-python3 docs/physical-evidence/verify_motion.py
-```
-
-Compatibility build and core test: 1/1 passed. Help exited 0 without acquiring a
-master. `ldd` showed the shared EtherCAT core and IgH with no ROS/DDS linkage.
-All five colcon packages built. Final colcon aggregate: **26 tests, zero errors,
-failures or skips** (the aggregate includes CTest and JUnit reporting entries).
-Tests load both installed plugins and exercise Resource Manager, exact shuttle
-sequence/restart/overflow, PDO/slave logic, limits/invalid commands, startup
-failure and single resource release. New regressions cover prompt activation,
-incremental startup, stale 15-second supplied startup period, catch-up send
-suppression, a real 12 ms monotonic gap, startup timeout and first-fault
-preservation through subsequent faults and error cleanup. Launch/URDF/YAML
-parsing checks include initial hardware state. Formatting and diff checks passed.
-
-An initial corrected-code test run failed because a test constructed/configured
-a ROS controller **after** hardware activation, delaying the first read by
-18.737 ms. The new handoff guard correctly rejected that test ordering. Moving
-controller construction before hardware activation fixed the test without
-loosening the guard. Instrumentation-only checks passed 21 aggregate tests;
-first corrected suite passed 25; final suite adds first-fault preservation.
-No physical master is used by the test-only fake IgH backend.
+See [current validation instructions](verification.md). The historical physical
+records below describe the ROS hardware commissioning session, not validation
+of the current checkout.
 
 ## Physical acceptance
 
@@ -238,7 +194,7 @@ acceptance condition checked again. CM PID 11208, update TID 11224 was `FF/50`;
 ### Exactly one moving round trip
 
 [Complete launch log, including all 2000 changed commands](physical-evidence/single-motion.log.txt),
-[management/parameter/baseline evidence](physical-evidence/single-motion-observer.txt),
+[management/parameter/initial-position evidence](physical-evidence/single-motion-observer.txt),
 and [boundary records](physical-evidence/single-motion-results.json).
 
 | Boundary | Trajectory update | CM read/write count | Target counts | Sampled actual counts |
@@ -283,7 +239,7 @@ unclaimed. Hardware deactivation took 123.390 ms, including the existing
 `shutdown-confirmed` recorded complete WC and statusword4688 (`0x1250`, Switch
 On Disabled). Cleanup/unconfigure succeeded in 2.765 ms. Launch exited normally.
 Final CLI state: master Idle/inactive, link UP, three slaves PREOP, no process
-domain and no remaining CM/standalone owner; master transmit errors and lost
+domain and no remaining Controller Manager owner; master transmit errors and lost
 frames were zero.
 
 **Post-disable displacement:** final powered hold actual/target were both938;
@@ -312,8 +268,7 @@ also had diag asserted. These flags are visible in every retained record; this
 is not a calibrated or saturation-free analog-input acceptance.
 
 No physical limit collision, forced link loss, watchdog reconfiguration, STO
-challenge, repeat trajectory, long-duration load/jitter profiling, or zero-force
-motion was performed. Limits/STO/travel were operator-verified prerequisites,
+challenge, repeat trajectory or long-duration load/jitter profiling was performed. Limits/STO/travel were operator-verified prerequisites,
 not re-tested by driving into stops. Offline injected faults cover software
 responses only. The application remains non-safety-rated. The next physical
 step requires operator review of post-disable movement and DC commissioning,
@@ -330,26 +285,4 @@ then deliberately activate the controller once. Stop controller, stop hardware,
 verify disable, unconfigure, then Ctrl-C launch. No additional dependencies are
 needed on this Jetson. Local-only ROS discovery does not alter IgH master traffic.
 
-```text
-CMakeLists.txt
-README.md
-packages/
-  zfc_ethercat_core/              shared transport, slaves, CiA-402, DC, stop
-  zfc_standalone/                 unchanged ROS-independent reference runner
-  zfc_ethercat_hardware/          lifecycle, startup, safety, raw handles, diagnostics
-  zfc_linear_shuttle_controller/ unchanged exact-count controller
-  zfc_bringup/                    local launch/configuration and integration tests
-docs/
-  standalone.md
-  verification.md                historical offline-only record
-  physical-bringup.md             this report
-  physical-evidence/              logs, process excerpts, command replay and results
-ros2                             user's preserved untracked empty file
-build/, install/, log/            ignored local artifacts
-```
-
-Changed implementation files are the shared core header/source, hardware
-header/source and new diagnostics header, bring-up YAML/launch, plugin tests
-and configuration test. README and this evidence report document the new
-lifecycle and measured behavior. Slave PDO mapping, SDO settings, DC sequence,
-standalone policy and trajectory controller implementation were preserved.
+See the [README layout](../README.md#layout-and-ownership) for current packages.

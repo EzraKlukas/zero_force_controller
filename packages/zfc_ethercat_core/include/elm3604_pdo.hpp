@@ -1,4 +1,4 @@
-// Beckhoff ELM3604-0002 PDO contract used by zero_force_controller.
+// Beckhoff ELM3604-0002 PDO contract used by the EtherCAT hardware component.
 //
 // The three configured channels are treated as X/Y/Z load-cell axes. Samples
 // remain signed 32-bit raw PDO counts at this layer; no voltage or force-unit

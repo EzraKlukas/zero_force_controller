@@ -1,8 +1,6 @@
 #include "ethercat_system.hpp"
 #include "cycle_timing.hpp"
 #include <cerrno>
-#include <cmath>
-#include <sstream>
 #include <stdexcept>
 namespace zfc {
 namespace {
@@ -45,8 +43,8 @@ bool ElmChannelValid(const Elm3604::Channel &channel) noexcept {
 // Recording starts only after communication, drive state, and ELM sample
 // validity are all true. If any of these become false after recording starts,
 // the run is treated as communication loss.
-bool ReadyToRecord(const EthercatState &state,
-                   const Elm3604::Feedback &elm) noexcept {
+bool IsReady(const EthercatState &state,
+             const Elm3604::Feedback &elm) noexcept {
   return state.have_master && state.have_domain && state.have_elm3604 &&
          state.have_clearpath && state.master.link_up &&
          state.master.slaves_responding == kExpectedSlaveCount &&
@@ -74,7 +72,7 @@ Clearpath::Command StopSequence::next() noexcept {
   return command_;
 }
 
-bool EthercatSystem::configure(std::string &error, bool activate_now) {
+bool EthercatSystem::configure(std::string &error) {
   if (ctx_.master) {
     error = "EtherCAT master already owned";
     return false;
@@ -151,7 +149,7 @@ bool EthercatSystem::configure(std::string &error, bool activate_now) {
 
     ecrt_slave_config_dc(ctx_.clearpath_config, Clearpath::kDcAssignActivate,
                          kPeriodNs, Clearpath::kSync0ShiftNs, 0, 0);
-    return !activate_now || activate(error);
+    return true;
   } catch (const std::exception &exception) {
     error = exception.what();
     release();
@@ -217,7 +215,7 @@ std::uint64_t EthercatSystem::read(std::uint64_t application_ns) noexcept {
   state.last_motor_feedback = snapshot_.motor;
   state.drive_operation_enabled_csp =
       CiA402::IsOperationEnabledCSP(snapshot_.motor);
-  ZFC_FINE(readiness_ns, snapshot_.ready = ReadyToRecord(state, snapshot_.elm);)
+  ZFC_FINE(readiness_ns, snapshot_.ready = IsReady(state, snapshot_.elm);)
   ZFC_VALUE(timing::ready, snapshot_.ready);
   ZFC_VALUE(timing::wc, state.domain.working_counter);
   ZFC_VALUE(timing::wc_state, state.domain.wc_state);
@@ -244,47 +242,6 @@ void EthercatSystem::write(const Clearpath::Command &command) noexcept {
   ZFC_FINE(slave_sync_ns, ecrt_master_sync_slave_clocks(ctx_.master);)
   ZFC_FINE(domain_queue_ns, ecrt_domain_queue(ctx_.domain);)
   ZFC_FINE(send_api_ns, ecrt_master_send(ctx_.master);)
-}
-bool EthercatSystem::startup(double timeout_seconds, std::string &error) {
-  if (!configured()) {
-    error = "Master is not configured";
-    return false;
-  }
-  if (!std::isfinite(timeout_seconds) || timeout_seconds <= 0 ||
-      timeout_seconds > 300) {
-    error = "Startup timeout must be in (0,300] seconds";
-    return false;
-  }
-  const auto start = MonotonicNs();
-  const auto timeout = static_cast<std::uint64_t>(timeout_seconds * 1e9);
-  timespec deadline{};
-  clock_gettime(CLOCK_MONOTONIC, &deadline);
-  Clearpath::Command command{};
-  while (MonotonicNs() - start < timeout) {
-    AddNs(&deadline, kPeriodNs);
-    if (SleepUntil(deadline) != 0)
-      break;
-    read(TimespecToNs(deadline));
-    CiA402::UpdateCSPEnableState(snapshot_.motor, &command);
-    // Seed on EVERY startup cycle, including the first Operation Enabled cycle.
-    command.target_position = snapshot_.motor.actual_position;
-    write(command);
-    if (snapshot_.ready)
-      return true;
-  }
-  const auto &b = snapshot_.bus;
-  std::ostringstream out;
-  out << "Startup timeout: link=" << b.master.link_up
-      << " slaves=" << b.master.slaves_responding
-      << " WC=" << b.domain.working_counter << " WC_state=" << b.domain.wc_state
-      << " OP(EK/ELM/drive)=" << b.ek1100.operational << '/'
-      << b.elm3604.operational << '/' << b.clearpath.operational
-      << " statusword=" << snapshot_.motor.statusword
-      << " mode=" << int(snapshot_.motor.mode_display)
-      << " ELM_valid=" << ElmChannelValid(snapshot_.elm.x)
-      << ElmChannelValid(snapshot_.elm.y) << ElmChannelValid(snapshot_.elm.z);
-  error = out.str();
-  return false;
 }
 bool EthercatSystem::shutdown() noexcept {
   if (!configured())

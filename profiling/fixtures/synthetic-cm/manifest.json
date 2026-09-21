@@ -1,6 +1,5 @@
 {
-  "run_id": 2,
-  "variant": 2,
+  "run_id": 1,
   "profiling_level": "FINE",
   "diagnostic_mode": "production",
   "phase": "synthetic steady hold",

@@ -4,7 +4,6 @@
 #include "hardware_interface/component_parser.hpp"
 #include "hardware_interface/resource_manager.hpp"
 #include "hardware_interface/system_interface.hpp"
-#include "matched_shuttle.hpp"
 #include "pluginlib/class_loader.hpp"
 #include <chrono>
 #include <fstream>
@@ -388,7 +387,7 @@ TEST_F(HardwareTest, FirstFaultSurvivesConsequencesAndErrorCleanup) {
   EXPECT_NE(diagnostic.find("event=on-error"), std::string::npos);
 }
 
-TEST(Plugins, MatchedHoldEquivalenceAndRestart) {
+TEST(Plugins, HoldAndRestart) {
   rclcpp::init(0, nullptr);
   {
     pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
@@ -414,22 +413,16 @@ TEST(Plugins, MatchedHoldEquivalenceAndRestart) {
     states.emplace_back(pos);
     states.emplace_back(state);
     controller->assign_interfaces(std::move(commands), std::move(states));
-    zfc::Shuttle standalone;
-    zfc::Parameters p;
-    p.hold_only = true;
-    ASSERT_TRUE(standalone.configure(p));
     for (int start : {123, -456}) {
       actual = start;
-      ASSERT_TRUE(standalone.activate(actual));
       ASSERT_EQ(controller->on_activate(rclcpp_lifecycle::State{}),
                 Callback::SUCCESS);
       for (int i = 0; i < 3000; ++i) {
-        ASSERT_TRUE(standalone.update(1000000));
         ASSERT_EQ(
             controller->update(rclcpp::Time(0),
                                rclcpp::Duration::from_nanoseconds(1000000)),
             controller_interface::return_type::OK);
-        EXPECT_EQ(target, standalone.target());
+        EXPECT_EQ(target, start);
       }
       EXPECT_EQ(controller->on_deactivate(rclcpp_lifecycle::State{}),
                 Callback::SUCCESS);

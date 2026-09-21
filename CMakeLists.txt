@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.16)
-project(zero_force_controller LANGUAGES CXX)
-set(ZFC_ROOT_BUILD ON)
-include(CTest)
-add_subdirectory(packages/zfc_ethercat_core)
-add_subdirectory(packages/zfc_standalone)

@@ -31,7 +31,7 @@ Callback LinearShuttleController::on_init() {
 Callback
 LinearShuttleController::on_configure(const rclcpp_lifecycle::State &) {
   try {
-    Parameters p;
+    RampParameters p;
     p.increment_counts_per_update =
         get_node()->get_parameter("increment_counts_per_update").as_int();
     p.updates_per_leg = get_node()->get_parameter("updates_per_leg").as_int();
@@ -41,7 +41,7 @@ LinearShuttleController::on_configure(const rclcpp_lifecycle::State &) {
     p.hold_only = get_node()->get_parameter("hold_only").as_bool();
     p.expected_update_rate_hz =
         get_node()->get_parameter("expected_update_rate_hz").as_int();
-    if (shuttle_.configure(p) && get_update_rate() == 1000)
+    if (ramp_.configure(p) && get_update_rate() == 1000)
       return Callback::SUCCESS;
     RCLCPP_ERROR(get_node()->get_logger(),
                  "Require 1 kHz controller rate, increment 1..10, direction "
@@ -54,17 +54,17 @@ LinearShuttleController::on_configure(const rclcpp_lifecycle::State &) {
 Callback LinearShuttleController::on_activate(const rclcpp_lifecycle::State &) {
   if (command_interfaces_.size() != 1 || state_interfaces_.size() != 2 ||
       state_interfaces_[1].get_value() != 1.0 ||
-      !shuttle_.activate(state_interfaces_[0].get_value()))
+      !ramp_.activate(state_interfaces_[0].get_value()))
     return Callback::ERROR;
   failed_ = false;
-  command_interfaces_[0].set_value(shuttle_.target());
+  command_interfaces_[0].set_value(ramp_.target());
   return Callback::SUCCESS;
 }
 Callback
 LinearShuttleController::on_deactivate(const rclcpp_lifecycle::State &) {
   if (!failed_ && !command_interfaces_.empty() && !state_interfaces_.empty())
     command_interfaces_[0].set_value(state_interfaces_[0].get_value());
-  shuttle_.reset();
+  ramp_.reset();
   return Callback::SUCCESS;
 }
 Result LinearShuttleController::update(const rclcpp::Time &,
@@ -77,7 +77,7 @@ Result LinearShuttleController::update(const rclcpp::Time &,
   if (ready) {
     zfc::timing::Boundary calculation(zfc::timing::calculation_entry,
                                       zfc::timing::calculation_exit);
-    ok = shuttle_.update(period.nanoseconds());
+    ok = ramp_.update(period.nanoseconds());
   }
   if (!ready || !ok) {
     failed_ = true;
@@ -85,7 +85,7 @@ Result LinearShuttleController::update(const rclcpp::Time &,
     command_interfaces_[0].set_value(std::numeric_limits<double>::quiet_NaN());
     return Result::ERROR;
   }
-  command_interfaces_[0].set_value(shuttle_.target());
+  command_interfaces_[0].set_value(ramp_.target());
   return Result::OK;
 }
 } // namespace zfc_linear_shuttle_controller

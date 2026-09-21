@@ -1,4 +1,4 @@
-"""Version 1 trace reader; one schema definition shared with C++. Integer ns."""
+"""Version 2 trace reader; one schema definition shared with C++. Integer ns."""
 from pathlib import Path
 import argparse
 import json
@@ -21,7 +21,7 @@ def read_trace(path):
         if len(header) != HEADER.size:
             raise ValueError("truncated header")
         magic, schema, size, count, drops, level, columns, reserved = HEADER.unpack(header)
-        if (magic, schema, size, columns, reserved) != (MAGIC, 1, len(FIELDS)*8, len(FIELDS), 0):
+        if (magic, schema, size, columns, reserved) != (MAGIC, 2, len(FIELDS)*8, len(FIELDS), 0):
             raise ValueError("unsupported trace layout/endian/schema")
         if count < 0 or drops < 0 or level not in (1, 2):
             raise ValueError("invalid header values")
@@ -34,8 +34,8 @@ def read_trace(path):
             raise ValueError("mixed schemas/levels")
         if df.cycle.diff().dropna().le(0).any() or df.cycle_entry.diff().dropna().le(0).any():
             raise ValueError("nonmonotonic cycles/timestamps")
-        if df.run_id.nunique() != 1 or df.variant.nunique() != 1:
-            raise ValueError("mixed runs/variants")
+        if df.run_id.nunique() != 1:
+            raise ValueError("mixed runs")
         if df.trace_drops.lt(0).any() or df.trace_drops.diff().dropna().lt(0).any():
             raise ValueError("invalid drop counters")
         selected = df[df.hardware_read_entry.gt(0)]
@@ -54,9 +54,11 @@ def metrics(df):
     d = df.copy()
     d['period_error_ns'] = (d.actual_period_ns-PERIOD).where(d.actual_period_ns.gt(0))
     d['active_span_ns'] = duration(d, 'hardware_read_entry', 'hardware_write_exit')
-    d['budget_slack_ns'] = PERIOD-d.active_span_ns
+    d['execution_ns'] = duration(d, 'cycle_entry', 'sleep_entry')
+    d['budget_slack_ns'] = PERIOD-d.execution_ns
+    d['execution_overrun'] = d.execution_ns.gt(PERIOD).where(d.execution_ns.notna())
     d['wakeup_lateness_ns'] = (d.cycle_mono_ns-d.deadline_mono_ns).where(d.deadline_mono_ns.gt(0))
-    d['completion_lateness_ns'] = (d.write_exit_mono_ns-d.deadline_mono_ns-PERIOD).where(d.deadline_mono_ns.gt(0) & d.write_exit_mono_ns.gt(0))
+    d['completion_lateness_ns'] = (d.execution_end_mono_ns-d.deadline_mono_ns-PERIOD).where(d.deadline_mono_ns.gt(0) & d.execution_end_mono_ns.gt(0))
     d['deadline_miss'] = d.completion_lateness_ns.gt(0).where(d.completion_lateness_ns.notna())
     for name, a, b in [('core_read_ns','core_read_entry','core_read_exit'), ('core_write_ns','core_write_entry','core_write_exit'),
                        ('hardware_read_ns','hardware_read_entry','hardware_read_exit'), ('hardware_write_ns','hardware_write_entry','hardware_write_exit'),
@@ -103,10 +105,10 @@ def summary(series):
 def load_run(directory):
     path = Path(directory)
     manifest = json.loads((path/'manifest.json').read_text())
-    for key in ('run_id', 'variant', 'profiling_level', 'diagnostic_mode', 'phase', 'motion_occurred', 'synthetic', 'environment'):
+    for key in ('run_id', 'profiling_level', 'diagnostic_mode', 'phase', 'motion_occurred', 'synthetic', 'environment'):
         if key not in manifest: raise ValueError(f'manifest missing {key}')
     d, integrity = read_trace(path/'timing.bin')
-    if len(d) and (not d.run_id.eq(manifest['run_id']).all() or not d.variant.eq(manifest['variant']).all()):
+    if len(d) and (not d.run_id.eq(manifest['run_id']).all()):
         raise ValueError('manifest/trace identity mismatch')
     return metrics(d), manifest, integrity
 

@@ -1,8 +1,8 @@
-#include "zfc_linear_shuttle_controller/shuttle.hpp"
+#include "zfc_linear_shuttle_controller/ramp_command_generator.hpp"
 #include <gtest/gtest.h>
 using namespace zfc_linear_shuttle_controller;
-TEST(Shuttle, ExactSequenceAndRestart) {
-  Shuttle s;
+TEST(RampCommandGenerator, ExactSequenceAndRestart) {
+  RampCommandGenerator s;
   ASSERT_TRUE(s.configure({}));
   for (int start : {123, -456}) {
     ASSERT_TRUE(s.activate(start));
@@ -23,9 +23,9 @@ TEST(Shuttle, ExactSequenceAndRestart) {
     EXPECT_FALSE(s.update(1000000));
   }
 }
-TEST(Shuttle, NegativeDirectionRepeatAndPeriod) {
-  Shuttle s;
-  Parameters p;
+TEST(RampCommandGenerator, NegativeDirectionRepeatAndPeriod) {
+  RampCommandGenerator s;
+  RampParameters p;
   p.initial_direction = -1;
   p.updates_per_leg = 2;
   p.repeat = true;
@@ -41,32 +41,32 @@ TEST(Shuttle, NegativeDirectionRepeatAndPeriod) {
   EXPECT_FALSE(s.update(10000001));
   EXPECT_EQ(s.target(), 5);
 }
-TEST(Shuttle, Validation) {
-  Parameters p;
+TEST(RampCommandGenerator, Validation) {
+  RampParameters p;
   for (auto direction : {0, 2, -2}) {
     p.initial_direction = direction;
-    EXPECT_FALSE(Shuttle::valid(p));
+    EXPECT_FALSE(RampCommandGenerator::valid(p));
   }
   p = {};
   p.increment_counts_per_update = 0;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
   p.increment_counts_per_update = -1;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
   p.increment_counts_per_update = 11;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
   p = {};
   p.updates_per_leg = 0;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
   p.updates_per_leg = -1;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
   p.updates_per_leg = INT64_MAX;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
   p = {};
   p.expected_update_rate_hz = 999;
-  EXPECT_FALSE(Shuttle::valid(p));
+  EXPECT_FALSE(RampCommandGenerator::valid(p));
 }
-TEST(Shuttle, OverflowAndInvalidActivation) {
-  Shuttle s;
+TEST(RampCommandGenerator, OverflowAndInvalidActivation) {
+  RampCommandGenerator s;
   ASSERT_TRUE(s.configure({}));
   EXPECT_FALSE(s.activate(INT32_MAX));
   EXPECT_TRUE(s.activate(INT32_MAX - 10000));
@@ -77,7 +77,7 @@ TEST(Shuttle, OverflowAndInvalidActivation) {
   EXPECT_FALSE(s.activate(INFINITY));
   EXPECT_FALSE(s.activate(0.25));
   EXPECT_FALSE(s.activate(2147483648.0));
-  Parameters p;
+  RampParameters p;
   p.initial_direction = -1;
   ASSERT_TRUE(s.configure(p));
   EXPECT_FALSE(s.activate(INT32_MIN));
@@ -85,4 +85,21 @@ TEST(Shuttle, OverflowAndInvalidActivation) {
   for (int i = 0; i < 2000; ++i)
     ASSERT_TRUE(s.update(1000000));
   EXPECT_EQ(s.target(), INT32_MIN + 10000);
+}
+
+TEST(RampCommandGenerator, HoldAndPeriodValidation) {
+  RampCommandGenerator ramp;
+  RampParameters p;
+  p.hold_only = true;
+  ASSERT_TRUE(ramp.configure(p));
+  for (int start : {123, -456}) {
+    ASSERT_TRUE(ramp.activate(start));
+    for (int i = 0; i < 3000; ++i) {
+      ASSERT_TRUE(ramp.update(1000000));
+      EXPECT_EQ(ramp.target(), start);
+    }
+    EXPECT_FALSE(ramp.update(0));
+    EXPECT_FALSE(ramp.update(10000001));
+    EXPECT_FALSE(ramp.activate(NAN));
+  }
 }

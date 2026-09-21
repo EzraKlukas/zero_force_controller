@@ -22,56 +22,31 @@ checks below. The default is one round trip, not indefinite repetition.
 ## Layout and ownership
 
 ```text
-CMakeLists.txt                         standalone compatibility build
 packages/
-  zfc_ethercat_core/
-    CMakeLists.txt, package.xml
-    cmake/igh.cmake                   IgH discovery and exported dependency
-    include/{ethercat_system,cia402,clearpath_pdo,elm3604_pdo,count_command}.hpp
-    src/{ethercat_system,cia402,clearpath_pdo,elm3604_pdo}.cpp
-    test/core_test.cpp
-  zfc_standalone/
-    CMakeLists.txt, package.xml
-    include/drive_logic.hpp
-    src/{main,drive_logic}.cpp
-  zfc_ethercat_hardware/
-    CMakeLists.txt, package.xml, plugins.xml
-    include/zfc_ethercat_hardware/{ethercat_hardware,diagnostics}.hpp
-    src/ethercat_hardware.cpp
+  zfc_ethercat_core/               IgH transport, PDOs, CiA-402, timing probes
+  zfc_ethercat_hardware/           SystemInterface, lifecycle, diagnostics
   zfc_linear_shuttle_controller/
-    CMakeLists.txt, package.xml, plugins.xml
-    include/zfc_linear_shuttle_controller/{linear_shuttle_controller,shuttle}.hpp
+    include/zfc_linear_shuttle_controller/
+      linear_shuttle_controller.hpp
+      ramp_command_generator.hpp
     src/linear_shuttle_controller.cpp
-    test/shuttle_test.cpp
-  zfc_bringup/
-    CMakeLists.txt, package.xml
-    config/controllers.yaml
-    urdf/ethercat.urdf
-    launch/local.launch.py
-    test/{test_configuration.py,plugins_test.cpp,fake_igh.hpp,fake_igh.cpp}
+    test/ramp_command_generator_test.cpp
+  zfc_bringup/                     local launch, YAML, URDF, integration tests
+  zfc_profiling/                   instrumented Controller Manager, hold config
+profiling/
+  analysis/                       trace reader, manifest, fixture, tests
+  notebooks/ros2_control_timing.ipynb
+  fixtures/synthetic-cm/           artificial reader example
+  README.md, schema.md
 docs/
-  standalone.md                       original zero-force reference documentation
-  verification.md                     original offline verification record
-  physical-bringup.md                 measured failure, fix and physical acceptance
-  physical-evidence/                  retained logs and single-run command evidence
+  verification.md                 offline validation instructions
+  physical-bringup.md             historical ROS hardware commissioning
+  physical-evidence/              ROS commissioning records
 ```
 
-`zfc_ethercat_core` is a shared, ROS-independent library. `EthercatSystem` owns
-master 0, one domain, all configuration handles, PDO offsets, snapshots, DC
-cadence and readiness. It is noncopyable and releases resources once. EK1100
-identity and OP presence are checked centrally; ELM startup SDOs, PDOs and
-sample decoding remain in `Elm3604`; ClearPath PDO access remains in
-`Clearpath`; CiA-402 decoding and CSP transitions remain in `CiA402`.
-
-`zfc_standalone` retains its absolute monotonic scheduling path, realtime
-setup, preallocated capture buffer, lock-free SPSC telemetry queue and
-zero-force `DriveLogic`. It links the same core library used by the hardware
-plugin, with no ROS/DDS dependency. Only the standalone runtime has its own
-cyclic loop. Its telemetry consumer is not an EtherCAT cyclic thread.
-The root build includes package CMake targets; packages never compile sources
-by reaching outside their own directory. No duplicate implementation copies
-are maintained. [Standalone details](docs/standalone.md) cover empirical gains,
-SDOs, PDO layout, DC settings and CSV output.
+`zfc_ethercat_core` owns master 0, one domain, PDO offsets, snapshots,
+distributed-clock cadence and device readiness. The hardware component uses
+this library for IgH transport; it has no application entry point.
 
 `zfc_ethercat_hardware/EthercatHardware` is one `SystemInterface` for the
 entire coupled bus. It adapts lifecycle, validates the interface contract and
@@ -80,7 +55,7 @@ no EtherCAT worker thread. A preallocated SPSC queue feeds a non-realtime
 diagnostic consumer that never accesses IgH.
 `zfc_linear_shuttle_controller/LinearShuttleController`
 claims only the target-count command and reads actual counts and readiness.
-It has no EtherCAT calls. Its separate `Shuttle` state machine has no ROS calls
+It has no EtherCAT calls. Its header-only `RampCommandGenerator` state machine has no ROS calls
 or heap storage. Bring-up supplies a direct robot-description parameter,
 controller configuration and local spawner.
 
@@ -107,7 +82,6 @@ slave states. The write path writes PDO commands, synchronizes the reference
 clock every other exchange to a fresh `CLOCK_MONOTONIC` reading, synchronizes
 slave clocks on every exchange, queues the domain and sends.
 
-The standalone supplies its scheduled monotonic deadline as application time.
 Humble gives plugins ROS/system-time timestamps rather than the scheduler's
 monotonic deadline, so the hardware adapter samples `CLOCK_MONOTONIC` at read
 entry. It never feeds the ROS epoch into IgH. The **clock basis, ordering, DC
@@ -196,6 +170,7 @@ increment_counts_per_update: 10  # integer 1..10
 updates_per_leg: 1000            # positive; total excursion must fit int32
 initial_direction: 1            # exactly +1 or -1
 repeat: false
+hold_only: false                 # true seeds and holds actual position
 expected_update_rate_hz: 1000
 ```
 
@@ -208,8 +183,7 @@ actual position, not an earlier run's origin.
 
 ## Build and offline verification on the Jetson
 
-Use a local Jetson terminal. Do not run standalone and Controller Manager at
-the same time; they contend for master 0.
+Use a local Jetson terminal. Only one Controller Manager may own master 0.
 
 ```bash
 cd /home/jetson/ezra-zfc
@@ -217,27 +191,17 @@ source /opt/ros/humble/setup.bash
 printf '%s\n' "$ROS_DISTRO"        # must be humble
 export ROS_LOCALHOST_ONLY=1
 
-# ROS-independent compatibility build (does not require sourcing ROS):
-cmake -S . -B build/compat -DBUILD_TESTING=ON
-cmake --build build/compat -j2
-ctest --test-dir build/compat --output-on-failure
-./build/compat/zero_force_controller --help
-ldd ./build/compat/zero_force_controller
-
-# Five explicit colcon packages; exclude the root compatibility project:
+colcon list --base-paths packages
 colcon build --base-paths packages --build-base build/colcon \
   --install-base install --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=ON
 source install/setup.bash
 colcon test --base-paths packages --build-base build/colcon \
   --install-base install --executor sequential --event-handlers console_direct+
 colcon test-result --test-result-base build/colcon --verbose
-ros2 run zfc_standalone zero_force_controller --help
 ```
 
 For a different IgH installation, append `-DIGH_MASTER_ROOT=/path/to/igh-master`
-to the CMake arguments. Keep ARM64 binaries on the Jetson. Root `build/compat`
-and colcon `build/colcon` are separate build trees, using the same source and
-library target definitions.
+to the CMake arguments. Keep ARM64 binaries on the Jetson.
 
 All required ROS binary dependencies were installed here. On another Humble
 Jetson, this command installs **only missing** binary dependencies; run it
@@ -256,8 +220,8 @@ printf 'Missing ROS dependencies: %s\n' "${missing[*]:-none}"
 if ((${#missing[@]})); then sudo apt-get install "${missing[@]}"; fi
 ```
 
-`colcon`, CMake, a C++20 compiler, Boost headers, Python pytest/YAML and the
-existing matched IgH kernel/userspace installation are also prerequisites.
+`colcon`, CMake, a C++20 compiler, Python pytest/YAML and the
+existing compatible IgH kernel/userspace installation are also prerequisites.
 Do not replace the working IgH installation as part of this integration.
 
 ## Realtime deployment
@@ -267,8 +231,7 @@ the supplied YAML. Confirm its success messages; do not treat a successful
 launch as proof of realtime operation. The physical test shell had rtprio
 soft/hard limits 99, unlimited memlock, and membership in `realtime` and
 `ethercat`. An unprivileged FIFO/50 probe and the actual CM thread were verified.
-The standalone retains its own best-effort FIFO/mlock setup.
-Both paths prefault stack storage; the hardware touches 8 KiB on the CM thread
+The hardware touches 8 KiB on the CM thread
 on its first read, and its fixed state/command storage is initialized before
 activation. This does not prove that every middleware or runtime page is
 resident; verify memory locking and page-fault behavior under deployment load.
@@ -426,8 +389,7 @@ actual position while claimed; it is not a mapped drive following-error object.
 
 [The verification record](docs/verification.md) distinguishes executed offline
 checks from hardware-only work. The test-only IgH backend is linked into the
-integration-test executable, never into installed plugins or the standalone
-runner. It emulates process data to exercise the real core and loaded plugins;
+integration-test executable, never into installed plugins. It emulates process data to exercise the real core and loaded plugins;
 it does not establish physical timing, electrical compatibility, drive tracking,
 DC lock, limit wiring, actual watchdog response or stop/STO behavior.
 
@@ -435,12 +397,17 @@ DC lock, limit wiring, actual watchdog response or stop/STO behavior.
 single trajectory, earlier failures, and remaining DC and post-disable movement
 limitations. Voltage disable does not establish mechanical position restraint.
 
-## Cycle profiling checkpoint
+## Cycle profiling
 
-The [profiling workbench](profiling/README.md) contains opt-in OFF/COARSE/FINE
-probes, a shared matched hold workload, a profiling-only 2.54.0 Controller
-Manager executable, and a Jupyter analysis notebook. Production launch and
-motion defaults are unchanged. Initial supervised no-motion matched standalone
-and Controller Manager traces, plus production/quiet diagnostic captures, are
-documented in `profiling/verification.md`; they are empirical observations, not
-WCET or hard-real-time proof.
+The [profiling workbench](profiling/README.md) retains opt-in OFF/COARSE/FINE
+probes and an instrumented Controller Manager 2.54.0 executable. Its launch
+uses the same application plugin with `hold_only=true`, hardware unconfigured
+and controller inactive. The notebook summarizes cycle execution, read,
+controller, write, period error, deadlines and overruns for ROS 2 captures.
+
+To read the implementation, start with `zfc_bringup/config/controllers.yaml`,
+then the controller's interface declarations and lifecycle callbacks in
+`linear_shuttle_controller.cpp`, its `update()`, the count-step generator in
+`ramp_command_generator.hpp`, and finally `EthercatHardware::write()` and
+`EthercatSystem::write()`. The controller claims one command interface; only
+Controller Manager invokes it. Parameters are loaded outside the update loop.

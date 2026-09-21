@@ -1,6 +1,6 @@
 #pragma once
 #include "controller_interface/controller_interface.hpp"
-#include "zfc_linear_shuttle_controller/shuttle.hpp"
+#include "zfc_linear_shuttle_controller/ramp_command_generator.hpp"
 namespace zfc_linear_shuttle_controller {
 class LinearShuttleController
     : public controller_interface::ControllerInterface {
@@ -20,7 +20,7 @@ public:
                                            const rclcpp::Duration &) override;
 
 private:
-  Shuttle shuttle_;
+  RampCommandGenerator ramp_;
   bool failed_ = false;
 };
 } // namespace zfc_linear_shuttle_controller

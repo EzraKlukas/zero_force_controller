@@ -1,7 +1,7 @@
 #pragma once
 #include "count_command.hpp"
-namespace zfc {
-struct Parameters {
+namespace zfc_linear_shuttle_controller {
+struct RampParameters {
   std::int64_t increment_counts_per_update = 10;
   std::int64_t updates_per_leg = 1000;
   std::int64_t initial_direction = 1;
@@ -9,11 +9,11 @@ struct Parameters {
   std::int64_t expected_update_rate_hz = 1000;
   bool hold_only = false;
 };
-// No ROS, heap storage or time integration. Each accepted update is one exact
-// step.
-class Shuttle {
+// Each accepted update advances one exact count step, without heap storage
+// or time integration.
+class RampCommandGenerator {
 public:
-  static bool valid(const Parameters &p) noexcept {
+  static bool valid(const RampParameters &p) noexcept {
     return p.increment_counts_per_update > 0 &&
            p.increment_counts_per_update <= zfc::kMaximumIncrementCounts &&
            p.updates_per_leg > 0 &&
@@ -22,7 +22,7 @@ public:
            p.updates_per_leg <=
                (std::int64_t(UINT32_MAX) / p.increment_counts_per_update);
   }
-  bool configure(const Parameters &p) noexcept {
+  bool configure(const RampParameters &p) noexcept {
     reset();
     configured_ = valid(p);
     if (configured_)
@@ -87,11 +87,11 @@ public:
   }
 
 private:
-  Parameters p_{};
+  RampParameters p_{};
   bool configured_ = false, active_ = false, returning_ = false,
        finished_ = false;
   std::int64_t updates_ = 0;
   std::int32_t start_ = 0, target_ = 0;
   std::uint64_t excessive_periods_ = 0;
 };
-} // namespace zfc
+} // namespace zfc_linear_shuttle_controller

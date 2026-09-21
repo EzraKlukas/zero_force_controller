@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>zfc_ethercat_core</name><version>0.1.0</version>
-  <description>ROS-independent IgH EtherCAT transport and devices</description>
+  <description>IgH EtherCAT transport and devices for the ros2_control hardware component</description>
   <maintainer email="ezraklukas@users.noreply.github.com">Ezra Klukas</maintainer>
   <license>LicenseRef-Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

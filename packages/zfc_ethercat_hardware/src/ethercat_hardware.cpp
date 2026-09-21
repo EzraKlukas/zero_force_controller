@@ -158,7 +158,7 @@ EthercatHardware::on_configure(const rclcpp_lifecycle::State &) {
   first_fault_ = {};
   fault_reported_ = false;
   std::string error;
-  if (!core_.configure(error, false)) {
+  if (!core_.configure(error)) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s",
                  error.c_str());
     return Callback::FAILURE;

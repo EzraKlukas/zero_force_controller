@@ -1,11 +1,14 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>zfc_profiling</name><version>0.1.0</version>
-  <description>Profiling-only version-matched Controller Manager executable</description>
+  <description>Instrumented Controller Manager cycle timing</description>
   <maintainer email="ezraklukas@users.noreply.github.com">Ezra Klukas</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>controller_manager</depend><depend>realtime_tools</depend>
   <depend>rclcpp</depend><depend>zfc_ethercat_core</depend>
+  <exec_depend>zfc_bringup</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>

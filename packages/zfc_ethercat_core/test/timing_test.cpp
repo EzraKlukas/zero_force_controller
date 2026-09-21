@@ -1,5 +1,4 @@
 #include "cycle_timing.hpp"
-#include "matched_shuttle.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -38,30 +37,6 @@ int main() {
   CHECK(storage[0][cycle] == 7 && storage[1][cycle] == 8);
   Buffer empty(nullptr, 0);
   CHECK(!empty.append(r) && empty.drops() == 1);
-  zfc::Shuttle s;
-  CHECK(s.configure({}));
-  for (int start : {123, -456}) {
-    CHECK(s.activate(start));
-    for (int i = 1; i <= 3000; ++i) {
-      CHECK(s.update(1000000));
-      CHECK(s.target() == start + (i <= 1000   ? i * 10
-                                   : i <= 2000 ? (2000 - i) * 10
-                                               : 0));
-    }
-  }
-  zfc::Parameters p;
-  p.hold_only = true;
-  CHECK(s.configure(p));
-  for (int start : {123, -456}) {
-    CHECK(s.activate(start));
-    for (int i = 0; i < 3000; ++i) {
-      CHECK(s.update(1000000));
-      CHECK(s.target() == start);
-    }
-    CHECK(!s.update(0));
-    CHECK(!s.update(10000001));
-    CHECK(!s.activate(std::numeric_limits<double>::quiet_NaN()));
-  }
 #if ZFC_PROFILE_LEVEL
   char path[128];
   std::snprintf(path, sizeof(path), "/tmp/zfc-timing-test-%d.bin", getpid());
@@ -80,6 +55,18 @@ int main() {
   }
   reject_allocation = false;
   flush();
+  FILE *file = std::fopen(path, "rb");
+  CHECK(file);
+  std::int64_t header[8]{};
+  CHECK(std::fread(header, sizeof(header), 1, file) == 1);
+  CHECK(header[0] == 0x5a464354494d4531LL && header[1] == 2);
+  CHECK(header[2] == sizeof(Record) && header[3] == 1024);
+  CHECK(header[4] == 0 && header[5] == ZFC_PROFILE_LEVEL);
+  CHECK(header[6] == field_count && header[7] == 0);
+  Record first;
+  CHECK(std::fread(&first, sizeof(first), 1, file) == 1);
+  CHECK(first[schema] == 2 && first[level] == ZFC_PROFILE_LEVEL);
+  CHECK(std::fclose(file) == 0);
   std::remove(path);
 #endif
   CHECK(raw_ns() > 0);
