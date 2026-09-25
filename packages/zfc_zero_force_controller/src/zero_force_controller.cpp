@@ -38,15 +38,15 @@ Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
     p.base_velocity_ = get_node()->get_parameter("base_velocity_").as_int();
     p.jerk_step_ = get_node()->get_parameter("jerk_step_").as_int();
     p.max_acceleration_limit_ =
-        get_node()->get_parameter("max_acceleration_limit_").as_bool();
+        get_node()->get_parameter("max_acceleration_limit_").as_int();
     p.cycles_per_acceleration_increase_ =
         get_node()
             ->get_parameter("cycles_per_acceleration_increase_")
-            .as_bool();
-    if (sequencer_.configure(p) && get_update_rate() == 1000)
+            .as_int();
+    if (sequencer_.configure(p))
       return Callback::SUCCESS;
     RCLCPP_ERROR(get_node()->get_logger(),
-                 "Require 1 kHz controller rate, +ve bounded params.");
+                 "Requires +ve bounded params.");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
   }

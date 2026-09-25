@@ -17,9 +17,10 @@ class CalibrationSequencer {
 public:
   static bool valid(const CalibrationParameters &p) noexcept {
     return p.center_zone_half_width_ > 0 &&
-           p.center_zone_half_width_ <= 10000 && p.jerk_step_ > 0 &&
+           p.center_zone_half_width_ <= 10000 && 
            p.base_velocity_ > 0 && p.base_velocity_ <= zfc::kMaximumVelocity &&
            p.jerk_step_ > 0 && p.jerk_step_ <= zfc::kMaximumJerk &&
+           p.max_acceleration_limit_ > 0 &&
            p.max_acceleration_limit_ <= zfc::kMaximumAcceleration &&
            p.cycles_per_acceleration_increase_ >= 1;
   }

@@ -12,7 +12,7 @@ zero_force_controller:
   ros__parameters:
     do_calibrate_: true
     center_zone_half_width_: 1000
-    base_velocity_: 1000
+    base_velocity_: 500
     jerk_step_: 5
-    max_acceleration_limit_: 20
-    cycles_per_acceleration_increase_: 10
+    max_acceleration_limit_: 10
+    cycles_per_acceleration_increase_: 5
