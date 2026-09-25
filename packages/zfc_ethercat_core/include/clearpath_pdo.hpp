@@ -35,14 +35,10 @@ public:
     // ClearView-configured limit functions; raw Input A/B bits are retained for
     // wiring diagnostics and are not used as limit decisions.
     struct TxPDOs {
-      static constexpr std::uint32_t kNegativeLimitReachedMask =
-          1U << 0U;
-      static constexpr std::uint32_t kPositiveLimitReachedMask =
-          1U << 1U;
-      static constexpr std::uint32_t kRawInputALineOnMask =
-          1U << 16U;
-      static constexpr std::uint32_t kRawInputBLineOnMask =
-          1U << 17U;
+      static constexpr std::uint32_t kNegativeLimitReachedMask = 1U << 0U;
+      static constexpr std::uint32_t kPositiveLimitReachedMask = 1U << 1U;
+      static constexpr std::uint32_t kRawInputALineOnMask = 1U << 16U;
+      static constexpr std::uint32_t kRawInputBLineOnMask = 1U << 17U;
 
       std::uint16_t statusword = 0;
       std::int8_t mode_display = 0;

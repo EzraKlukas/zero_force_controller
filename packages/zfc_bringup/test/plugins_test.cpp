@@ -40,7 +40,7 @@ TEST(Plugins, ControllerRunsThroughLoanedInterfaces) {
     pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
         "controller_interface", "controller_interface::ControllerInterface");
     auto controller = loader.createSharedInstance(
-        "zfc_linear_shuttle_controller/LinearShuttleController");
+        "zfc_zero_force_controller/ZeroForceController");
     ASSERT_EQ(controller->init("offline_shuttle", "",
                                rclcpp::NodeOptions().parameter_overrides(
                                    {rclcpp::Parameter("update_rate", 1000)})),
@@ -267,7 +267,7 @@ TEST(Plugins, ResourceManagerReadUpdateWrite) {
     pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
         "controller_interface", "controller_interface::ControllerInterface");
     auto controller = loader.createSharedInstance(
-        "zfc_linear_shuttle_controller/LinearShuttleController");
+        "zfc_zero_force_controller/ZeroForceController");
     ASSERT_EQ(controller->init("resource_manager_shuttle", "",
                                rclcpp::NodeOptions().parameter_overrides(
                                    {rclcpp::Parameter("update_rate", 1000)})),
@@ -393,7 +393,7 @@ TEST(Plugins, HoldAndRestart) {
     pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
         "controller_interface", "controller_interface::ControllerInterface");
     auto controller = loader.createSharedInstance(
-        "zfc_linear_shuttle_controller/LinearShuttleController");
+        "zfc_zero_force_controller/ZeroForceController");
     ASSERT_EQ(controller->init("offline_hold", "",
                                rclcpp::NodeOptions().parameter_overrides(
                                    {rclcpp::Parameter("update_rate", 1000),

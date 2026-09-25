@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>zfc_linear_shuttle_controller</name><version>0.1.0</version>
-  <description>Synchronous two-point trajectory in raw motor counts</description>
+  <name>zfc_zero_force_controller</name><version>0.1.0</version>
+  <description>Zero force motor control with inertial mass finding calibration</description>
   <maintainer email="ezraklukas@users.noreply.github.com">Ezra Klukas</maintainer>
   <license>LicenseRef-Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

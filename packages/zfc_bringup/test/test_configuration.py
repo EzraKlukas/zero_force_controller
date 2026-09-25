@@ -17,7 +17,7 @@ def test_configuration():
     assert config["controller_manager"]["ros__parameters"]["hardware_components_initial_state"] == {
         "unconfigured": ["EthercatSystem"]
     }
-    params = config["linear_shuttle_controller"]["ros__parameters"]
+    params = config["zero_force_controller"]["ros__parameters"]
     assert params["increment_counts_per_update"] == 10
     assert params["updates_per_leg"] == 1000
     assert params["repeat"] is False

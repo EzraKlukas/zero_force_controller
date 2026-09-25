@@ -6,14 +6,13 @@ controller_manager:
     use_sim_time: false
     lock_memory: true
     thread_priority: 50
-    linear_shuttle_controller:
-      type: zfc_linear_shuttle_controller/LinearShuttleController
-linear_shuttle_controller:
+    zero_force_controller:
+      type: zfc_zero_force_controller/ZeroForceController
+zero_force_controller:
   ros__parameters:
-    update_rate: 1000
-    increment_counts_per_update: 10
-    updates_per_leg: 1000
-    initial_direction: 1
-    repeat: false
-    hold_only: true
-    expected_update_rate_hz: 1000
+    do_calibrate_: false
+    center_zone_half_width_: 1000
+    base_velocity_: 1000
+    jerk_step_: 5
+    max_acceleration_limit_: 20
+    cycles_per_acceleration_increase_: 10

@@ -19,7 +19,7 @@ def generate_launch_description():
         ),
         Node(
             package="controller_manager", executable="spawner",
-            arguments=["linear_shuttle_controller", "--inactive",
+            arguments=["zero_force_controller", "--inactive",
                        "--controller-manager", "/controller_manager",
                        "--controller-manager-timeout", "60"],
             output="screen",

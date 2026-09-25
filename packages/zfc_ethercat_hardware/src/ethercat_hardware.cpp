@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include <algorithm>
 #include <charconv>
+#include <ethercat_system.hpp>
 #include <string_view>
 namespace zfc_ethercat_hardware {
 namespace {
@@ -94,8 +95,7 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
             std::from_chars(value.data(), value.data() + value.size(), number);
         if (result.ec != std::errc{} ||
             result.ptr != value.data() + value.size() ||
-            number !=
-                (key == "update_rate_hz" ? 1000 : zfc::kMaximumIncrementCounts))
+            number != (key == "update_rate_hz" ? 1000 : zfc::kMaximumVelocity))
           throw std::runtime_error(
               "Require update_rate_hz=1000 and max_increment_counts=10");
       }
@@ -438,7 +438,7 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
       std::int32_t counts;
       const auto validation = zfc::ValidateCommand(
           claimed_ ? command_ : double(previous_), previous_,
-          core_.snapshot().motor, zfc::kMaximumIncrementCounts, counts);
+          core_.snapshot().motor, zfc::kMaximumVelocity, counts);
       if (validation != zfc::CommandResult::valid) {
         if (validation == zfc::CommandResult::limit)
           ++state_[24];

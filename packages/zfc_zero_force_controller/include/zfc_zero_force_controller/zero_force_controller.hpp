@@ -1,9 +1,8 @@
 #pragma once
 #include "controller_interface/controller_interface.hpp"
-#include "zfc_linear_shuttle_controller/ramp_command_generator.hpp"
-namespace zfc_linear_shuttle_controller {
-class LinearShuttleController
-    : public controller_interface::ControllerInterface {
+#include "zfc_zero_force_controller/calibration_sequencer.hpp"
+namespace zfc_zero_force_controller {
+class ZeroForceController : public controller_interface::ControllerInterface {
 public:
   controller_interface::InterfaceConfiguration
   command_interface_configuration() const override;
@@ -20,7 +19,7 @@ public:
                                            const rclcpp::Duration &) override;
 
 private:
-  RampCommandGenerator ramp_;
+  CalibrationSequencer sequencer_;
   bool failed_ = false;
 };
-} // namespace zfc_linear_shuttle_controller
+} // namespace zfc_zero_force_controller

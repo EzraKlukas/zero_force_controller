@@ -14,3 +14,7 @@ __pycache__/
 # Timing captures and generated analysis (retain schema/notebook/fixtures).
 profiling/results/
 profiling/.venv/
+*.ipynb_checkpoints/
+profiling/profiling
+
+past_experiments/

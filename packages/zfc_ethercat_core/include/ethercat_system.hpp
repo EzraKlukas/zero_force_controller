@@ -8,8 +8,10 @@
 namespace zfc {
 inline constexpr std::uint64_t kPeriodNs = 1000000;
 inline constexpr unsigned kExpectedSlaveCount = 3;
-// A single conservative contract shared with the raw-count controller.
-inline constexpr std::int32_t kMaximumIncrementCounts = 10;
+// A single contract shared with the raw-count controller.
+inline constexpr std::int32_t kMaximumVelocity = 1000;   // arbitrary!
+inline constexpr std::int32_t kMaximumAcceleration = 50; // arbitrary!
+inline constexpr std::int32_t kMaximumJerk = 50;         // arbitrary!
 std::uint64_t TimespecToNs(const timespec &time) noexcept;
 std::uint64_t MonotonicNs() noexcept;
 void AddNs(timespec *time, std::uint64_t ns) noexcept;

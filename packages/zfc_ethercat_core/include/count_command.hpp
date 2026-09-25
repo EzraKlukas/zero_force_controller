@@ -20,7 +20,7 @@ inline CommandResult ValidateCommand(double value, std::int32_t previous,
   if (!ToCounts(value, out))
     return CommandResult::invalid;
   const auto delta = std::int64_t(out) - previous;
-  if (maximum <= 0 || maximum > kMaximumIncrementCounts || delta > maximum ||
+  if (maximum <= 0 || maximum > kMaximumVelocity || delta > maximum ||
       delta < -maximum)
     return CommandResult::excessive_increment;
   // Check both intent and residual following error into a limit.
