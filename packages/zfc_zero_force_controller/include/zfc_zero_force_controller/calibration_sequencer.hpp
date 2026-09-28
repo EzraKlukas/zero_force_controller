@@ -47,6 +47,9 @@ public:
     finished_ = false;
     update_count_ = 0;
     start_position_ = commanded_position_ = 0;
+    velocity_ = acceleration_ = 0;
+    acceleration_limit_ = 0;
+    completed_shuttle_cycles_ = 0;
     excessive_periods_ = 0;
   }
   bool update(std::int64_t period_ns) noexcept {
@@ -70,7 +73,7 @@ public:
         finished_ = true;
         return true;
       }
-      commanded_position_ -= direction_sign * p_.base_velocity_;
+      commanded_position_ -= 0.1 * direction_sign * p_.base_velocity_;
       return true;
     }
 
@@ -113,7 +116,17 @@ public:
 
     return true;
   }
-  void limit_hit() noexcept { aborting_ = true; }
+  void limit_hit(bool positive_limit, bool negative_limit) noexcept { 
+      const auto displacement_from_start = commanded_position_ - start_position_;
+
+      if (displacement_from_start >= 0 && negative_limit) {
+          finished_ = true;
+      } else if (displacement_from_start <= 0 && positive_limit) {
+          finished_ = true;
+      } else {
+          aborting_ = true;
+      }
+  }
   std::int32_t target() const noexcept { return commanded_position_; }
   std::uint64_t excessive_periods() const noexcept {
     return excessive_periods_;

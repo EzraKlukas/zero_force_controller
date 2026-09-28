@@ -89,7 +89,7 @@ Result ZeroForceController::update(const rclcpp::Time &,
     zfc::timing::Boundary calculation(zfc::timing::calculation_entry,
                                       zfc::timing::calculation_exit);
     if (negative_limit.get_value() || positive_limit.get_value()) {
-      sequencer_.limit_hit();
+      sequencer_.limit_hit(positive_limit.get_value(), negative_limit.get_value());
     }
     ok = sequencer_.update(period.nanoseconds());
   }
