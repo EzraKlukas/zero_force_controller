@@ -13,7 +13,7 @@ controller_interface::InterfaceConfiguration
 ZeroForceController::state_interface_configuration() const {
   return {controller_interface::interface_configuration_type::INDIVIDUAL,
           {"clearpath_axis/actual_position_counts", "ethercat/ready",
-           "clearpath_axis/negative_limit", "clearpath_axis/positive_limit"}};
+           "elm3604/x_raw_counts", "elm3604/x_valid"}};
 }
 Callback ZeroForceController::on_init() {
   try {
@@ -40,13 +40,10 @@ Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
     p.max_acceleration_limit_ =
         get_node()->get_parameter("max_acceleration_limit_").as_int();
     p.cycles_per_acceleration_increase_ =
-        get_node()
-            ->get_parameter("cycles_per_acceleration_increase_")
-            .as_int();
+        get_node()->get_parameter("cycles_per_acceleration_increase_").as_int();
     if (sequencer_.configure(p))
       return Callback::SUCCESS;
-    RCLCPP_ERROR(get_node()->get_logger(),
-                 "Requires +ve bounded params.");
+    RCLCPP_ERROR(get_node()->get_logger(), "Requires +ve bounded params.");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
   }
@@ -55,11 +52,12 @@ Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
 Callback ZeroForceController::on_activate(const rclcpp_lifecycle::State &) {
   if (command_interfaces_.size() != 1 || state_interfaces_.size() != 4 ||
       state_interfaces_[1].get_value() != 1.0 ||
-      (state_interfaces_[2].get_value() || state_interfaces_[3].get_value()) ||
+      (state_interfaces_[3].get_value()) != 1.0 ||
       !sequencer_.activate(state_interfaces_[0].get_value()))
     return Callback::ERROR;
   failed_ = false;
   command_interfaces_[0].set_value(sequencer_.target());
+  controller_state_ = ControllerState::calibrate;
   return Callback::SUCCESS;
 }
 Callback ZeroForceController::on_deactivate(const rclcpp_lifecycle::State &) {
@@ -79,18 +77,15 @@ Result ZeroForceController::update(const rclcpp::Time &,
   auto &target_position_counts = command_interfaces_[0];
   // const auto &actual_position_counts = state_interfaces_[0];
   const bool &ready = state_interfaces_[1].get_value() == 1.0;
-  const auto &negative_limit = state_interfaces_[2];
-  const auto &positive_limit = state_interfaces_[3];
+  const auto &x_raw_counts = state_interfaces_[2].get_value();
+  const bool &x_valid = state_interfaces_[3].get_value() == 1.0;
 
-  // I could do checking of actual - target. Probably done in hardware.
+  // Should I do checking of actual - target?
 
   bool ok = false;
   if (ready) {
     zfc::timing::Boundary calculation(zfc::timing::calculation_entry,
                                       zfc::timing::calculation_exit);
-    if (negative_limit.get_value() || positive_limit.get_value()) {
-      sequencer_.limit_hit(positive_limit.get_value(), negative_limit.get_value());
-    }
     ok = sequencer_.update(period.nanoseconds());
   }
   if (!ready || !ok) {

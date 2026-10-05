@@ -1,7 +1,10 @@
 #pragma once
 #include "controller_interface/controller_interface.hpp"
 #include "zfc_zero_force_controller/calibration_sequencer.hpp"
+#include "zfc_zero_force_controller/zero_force_dynamics.hpp"
 namespace zfc_zero_force_controller {
+enum class ControllerState { idle, calibrate, zero_force };
+
 class ZeroForceController : public controller_interface::ControllerInterface {
 public:
   controller_interface::InterfaceConfiguration
@@ -19,7 +22,9 @@ public:
                                            const rclcpp::Duration &) override;
 
 private:
+  ControllerState controller_state_ = ControllerState::idle;
   CalibrationSequencer sequencer_;
+  ZeroForceDynamics zf_dynamics_;
   bool failed_ = false;
 };
 } // namespace zfc_zero_force_controller
