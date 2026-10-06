@@ -1,0 +1,167 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="zfc_stage">
+  <!-- REVIEW DRAFT. Geometry, masses, travel and limits are illustrative.
+       Installation calibration must be measured before physical configuration.
+       This file prepares Gazebo integration; it is not a simulation launch. -->
+  <xacro:arg name="backend" default="ethercat"/>
+  <xacro:arg name="controllers_file" default="${xacro.abs_filename('../config/controllers.yaml')}"/>
+  <xacro:arg name="backend_file" default="${xacro.abs_filename('../config/gazebo.yaml')}"/>
+  <xacro:arg name="hardware_calibration_file" default="${xacro.abs_filename('../config/hardware_calibration.yaml')}"/>
+  <xacro:arg name="travel_m" default="0.50"/>
+  <xacro:arg name="velocity_limit_mps" default="0.10"/>
+  <xacro:arg name="effort_limit_n" default="100.0"/>
+  <xacro:arg name="carriage_mass_kg" default="2.0"/>
+  <xacro:arg name="tool_mass_kg" default="0.20"/>
+  <xacro:arg name="initial_position_m" default="0.25"/>
+  <xacro:arg name="diagnostic_mode" default="production"/>
+  <xacro:property name="backend" value="$(arg backend)"/>
+  <xacro:property name="backend_plugins" value="${dict(ethercat='zfc_ethercat_hardware/EthercatHardware', gazebo='gz_ros2_control/GazeboSimSystem')}"/>
+  <xacro:property name="controllers_path" value="$(arg controllers_file)"/>
+  <xacro:property name="travel" value="$(arg travel_m)"/>
+  <xacro:property name="carriage_mass" value="$(arg carriage_mass_kg)"/>
+  <xacro:property name="tool_mass" value="$(arg tool_mass_kg)"/>
+
+  <material name="rail_black"><color rgba="0.12 0.13 0.14 1"/></material>
+  <material name="aluminium"><color rgba="0.65 0.68 0.70 1"/></material>
+  <material name="sensor_blue"><color rgba="0.12 0.40 0.75 1"/></material>
+
+  <xacro:macro name="box_inertia" params="mass sx sy sz xyz:='0 0 0'">
+    <inertial>
+      <origin xyz="${xyz}"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass*(sy*sy+sz*sz)/12}" ixy="0" ixz="0"
+               iyy="${mass*(sx*sx+sz*sz)/12}" iyz="0"
+               izz="${mass*(sx*sx+sy*sy)/12}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- Fixed world attachment, rather than making the whole model static. -->
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/><child link="base_link"/>
+  </joint>
+  <link name="base_link">
+    <xacro:box_inertia mass="5.0" sx="0.08" sy="0.12" sz="${travel+0.15}"
+                       xyz="0 0 ${0.20+travel/2}"/>
+    <visual>
+      <origin xyz="0 0 ${0.20+travel/2}"/>
+      <geometry><box size="0.08 0.12 ${travel+0.15}"/></geometry>
+      <material name="rail_black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${0.20+travel/2}"/>
+      <geometry><box size="0.08 0.12 ${travel+0.15}"/></geometry>
+    </collision>
+    <!-- Stationary motor drawn for context; no rotor/transmission dynamics. -->
+    <visual>
+      <origin xyz="0 0 0.04"/>
+      <geometry><cylinder radius="0.055" length="0.16"/></geometry>
+      <material name="rail_black"/>
+    </visual>
+  </link>
+
+  <!-- q=0: lower travel datum; +q: upward. q is metres, not motor radians. -->
+  <joint name="carriage" type="prismatic">
+    <parent link="base_link"/><child link="carriage_link"/>
+    <origin xyz="0.09 0 0.20"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="${travel}" effort="$(arg effort_limit_n)"
+           velocity="$(arg velocity_limit_mps)"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+  <link name="carriage_link">
+    <xacro:box_inertia mass="${carriage_mass}" sx="0.12" sy="0.18" sz="0.08"/>
+    <visual><geometry><box size="0.12 0.18 0.08"/></geometry><material name="aluminium"/></visual>
+    <collision><geometry><box size="0.12 0.18 0.08"/></geometry></collision>
+  </link>
+
+  <!-- Provisional sensor force path: carriage -> sensor -> distal tool.
+       Sensor frame +X is vertical upward, +Y lateral, +Z toward the wall.
+       Confirm physical placement and channel/frame mapping before validation. -->
+  <joint name="load_cell_joint" type="fixed">
+    <parent link="carriage_link"/><child link="load_cell_link"/>
+    <origin xyz="0.08 0 0" rpy="0 -1.5707963267948966 0"/>
+  </joint>
+  <link name="load_cell_link">
+    <xacro:box_inertia mass="0.05" sx="0.03" sy="0.04" sz="0.03"/>
+    <visual><geometry><box size="0.03 0.04 0.03"/></geometry><material name="sensor_blue"/></visual>
+    <collision><geometry><box size="0.03 0.04 0.03"/></geometry></collision>
+  </link>
+  <joint name="tool_mount" type="fixed">
+    <parent link="load_cell_link"/><child link="tool_link"/>
+    <origin xyz="0 0 -0.055"/>
+  </joint>
+  <link name="tool_link">
+    <xacro:box_inertia mass="${tool_mass}" sx="0.08" sy="0.12" sz="0.08"/>
+    <visual><geometry><box size="0.08 0.12 0.08"/></geometry><material name="aluminium"/></visual>
+    <collision><geometry><box size="0.08 0.12 0.08"/></geometry></collision>
+  </link>
+
+  <!-- One shared controller-facing contract, regardless of transport. -->
+  <ros2_control name="StageSystem" type="system">
+    <hardware>
+      <!-- Dictionary lookup rejects invalid backends during expansion. -->
+      <plugin>${backend_plugins[backend]}</plugin>
+      <xacro:if value="${backend == 'ethercat'}">
+        <xacro:property name="cal" value="${xacro.load_yaml('$(arg hardware_calibration_file)')}"/>
+        <param name="startup_timeout_seconds">20</param>
+        <param name="update_rate_hz">1000</param>
+        <param name="diagnostic_mode">$(arg diagnostic_mode)</param>
+        <param name="conventions_confirmed">${'true' if cal['conventions_confirmed'] == True else 'false'}</param>
+        <param name="force_frame">${cal['force_frame']}</param>
+        <param name="force_channel_mapping">${cal['force_channel_mapping']}</param>
+        <!-- Installation calibration; NaN must block hardware configuration. -->
+        <param name="metres_per_count">${cal['metres_per_count']}</param>
+        <param name="encoder_zero_counts">${cal['encoder_zero_counts']}</param>
+        <param name="velocity_mps_per_raw_unit">${cal['velocity_mps_per_raw_unit']}</param>
+        <param name="force_x_newtons_per_count">${cal['force_x_newtons_per_count']}</param>
+        <param name="force_y_newtons_per_count">${cal['force_y_newtons_per_count']}</param>
+        <param name="force_z_newtons_per_count">${cal['force_z_newtons_per_count']}</param>
+        <param name="force_x_zero_counts">${cal['force_x_zero_counts']}</param>
+        <param name="force_y_zero_counts">${cal['force_y_zero_counts']}</param>
+        <param name="force_z_zero_counts">${cal['force_z_zero_counts']}</param>
+      </xacro:if>
+    </hardware>
+    <joint name="carriage">
+      <command_interface name="position">
+        <param name="min">0.0</param><param name="max">${travel}</param>
+      </command_interface>
+      <state_interface name="position">
+        <xacro:if value="${backend == 'gazebo'}">
+          <param name="initial_value">$(arg initial_position_m)</param>
+        </xacro:if>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <!-- No effort state until motor torque -> joint force is verified. -->
+    </joint>
+    <sensor name="load_cell">
+      <state_interface name="force.x"/>
+      <state_interface name="force.y"/>
+      <state_interface name="force.z"/>
+    </sensor>
+  </ros2_control>
+
+  <xacro:if value="${backend == 'gazebo'}">
+    <gazebo reference="load_cell_joint">
+      <preserveFixedJoint>true</preserveFixedJoint>
+      <sensor name="load_cell" type="force_torque">
+        <always_on>true</always_on>
+        <update_rate>1000</update_rate>
+        <topic>load_cell</topic>
+        <force_torque>
+          <frame>child</frame>
+          <measure_direction>parent_to_child</measure_direction>
+        </force_torque>
+      </sensor>
+    </gazebo>
+    <gazebo>
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <robot_param>robot_description</robot_param>
+        <robot_param_node>robot_state_publisher</robot_param_node>
+        <parameters>${dict(absolute=controllers_path)['absolute' if controllers_path.startswith('/') else 'controllers_file_must_be_absolute']}</parameters>
+        <parameters>$(arg backend_file)</parameters>
+        <controller_manager_name>controller_manager</controller_manager_name>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+</robot>

@@ -1,18 +1,4 @@
-controller_manager:
-  ros__parameters:
-    hardware_components_initial_state:
-      unconfigured: [EthercatSystem]
-    update_rate: 1000
-    use_sim_time: false
-    lock_memory: true
-    thread_priority: 50
-    zero_force_controller:
-      type: zfc_zero_force_controller/ZeroForceController
+# Loaded after shared controllers.yaml and hardware.yaml.
 zero_force_controller:
   ros__parameters:
-    do_calibrate_: false
-    center_zone_half_width_: 1000
-    base_velocity_: 1000
-    jerk_step_: 5
-    max_acceleration_limit_: 20
-    cycles_per_acceleration_increase_: 10
+    do_calibrate: false

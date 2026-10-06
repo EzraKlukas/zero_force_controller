@@ -1,0 +1,16 @@
+controller_manager:
+  ros__parameters:
+    use_sim_time: false
+    hardware_components_initial_state:
+      unconfigured: [StageSystem]
+    lock_memory: true
+    thread_priority: 50
+zero_force_controller:
+  ros__parameters:
+    use_sim_time: false
+joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: false
+load_cell_broadcaster:
+  ros__parameters:
+    use_sim_time: false

@@ -16,17 +16,20 @@ TEST(Plugins, HardwareLoadsAndInitDoesNotRequestMaster) {
       "hardware_interface", "hardware_interface::SystemInterface");
   auto hw =
       loader.createSharedInstance("zfc_ethercat_hardware/EthercatHardware");
-  std::ifstream input(
-      ament_index_cpp::get_package_share_directory("zfc_bringup") +
-      "/urdf/ethercat.urdf");
-  ASSERT_TRUE(input.good());
+  const std::string command = std::string("xacro '") + ZFC_BRINGUP_SOURCE +
+      "/urdf/stage.urdf.xacro'";
+  FILE *pipe = popen(command.c_str(), "r");
+  if (!pipe) throw std::runtime_error("Cannot expand test Xacro");
   std::ostringstream xml;
-  xml << input.rdbuf();
+  char buffer[4096];
+  while (fgets(buffer, sizeof(buffer), pipe)) xml << buffer;
+  if (pclose(pipe) != 0) throw std::runtime_error("Test Xacro failed");
+
   const auto infos =
       hardware_interface::parse_control_resources_from_urdf(xml.str());
   ASSERT_EQ(infos.size(), 1U);
   ASSERT_EQ(hw->on_init(infos[0]), Callback::SUCCESS);
-  EXPECT_EQ(hw->export_state_interfaces().size(), 25U);
+  EXPECT_EQ(hw->export_state_interfaces().size(), 5U);
   EXPECT_EQ(hw->export_command_interfaces().size(), 1U);
   EXPECT_EQ(hw->on_cleanup(rclcpp_lifecycle::State{}), Callback::SUCCESS);
   EXPECT_EQ(hw->on_cleanup(rclcpp_lifecycle::State{}), Callback::SUCCESS);
@@ -34,62 +37,29 @@ TEST(Plugins, HardwareLoadsAndInitDoesNotRequestMaster) {
   bad.hardware_parameters["update_rate_hz"] = "999";
   EXPECT_EQ(hw->on_init(bad), Callback::ERROR);
 }
-TEST(Plugins, ControllerRunsThroughLoanedInterfaces) {
-  rclcpp::init(0, nullptr);
-  {
-    pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
-        "controller_interface", "controller_interface::ControllerInterface");
-    auto controller = loader.createSharedInstance(
-        "zfc_zero_force_controller/ZeroForceController");
-    ASSERT_EQ(controller->init("offline_shuttle", "",
-                               rclcpp::NodeOptions().parameter_overrides(
-                                   {rclcpp::Parameter("update_rate", 1000)})),
-              controller_interface::return_type::OK);
-    EXPECT_EQ(controller->configure().id(),
-              lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE);
-    double actual = 123, target = -999, ready = 1;
-    hardware_interface::CommandInterface cmd("clearpath_axis",
-                                             "target_position_counts", &target);
-    hardware_interface::StateInterface pos("clearpath_axis",
-                                           "actual_position_counts", &actual);
-    hardware_interface::StateInterface state("ethercat", "ready", &ready);
-    std::vector<hardware_interface::LoanedCommandInterface> commands;
-    commands.emplace_back(cmd);
-    std::vector<hardware_interface::LoanedStateInterface> states;
-    states.emplace_back(pos);
-    states.emplace_back(state);
-    controller->assign_interfaces(std::move(commands), std::move(states));
-    ASSERT_EQ(controller->on_activate(rclcpp_lifecycle::State{}),
-              Callback::SUCCESS);
-    EXPECT_EQ(target, 123);
-    for (int i = 1; i <= 2000; ++i) {
-      EXPECT_EQ(controller->update(rclcpp::Time(0),
-                                   rclcpp::Duration::from_nanoseconds(1000000)),
-                controller_interface::return_type::OK);
-      EXPECT_EQ(target, 123 + 10 * (i <= 1000 ? i : 2000 - i));
-    }
-    EXPECT_EQ(controller->on_deactivate(rclcpp_lifecycle::State{}),
-              Callback::SUCCESS);
-    actual = -234;
-    ASSERT_EQ(controller->on_activate(rclcpp_lifecycle::State{}),
-              Callback::SUCCESS);
-    EXPECT_EQ(target, -234);
-    controller->on_deactivate(rclcpp_lifecycle::State{});
-    controller->release_interfaces();
-  }
-  rclcpp::shutdown();
-}
-
 namespace {
 hardware_interface::HardwareInfo TestInfo() {
-  std::ifstream input(
-      ament_index_cpp::get_package_share_directory("zfc_bringup") +
-      "/urdf/ethercat.urdf");
+  const std::string command = std::string("xacro '") + ZFC_BRINGUP_SOURCE +
+      "/urdf/stage.urdf.xacro'";
+  FILE *pipe = popen(command.c_str(), "r");
+  if (!pipe) throw std::runtime_error("Cannot expand test Xacro");
   std::ostringstream xml;
-  xml << input.rdbuf();
+  char buffer[4096];
+  while (fgets(buffer, sizeof(buffer), pipe)) xml << buffer;
+  if (pclose(pipe) != 0) throw std::runtime_error("Test Xacro failed");
+
   auto info =
       hardware_interface::parse_control_resources_from_urdf(xml.str()).at(0);
   info.hardware_parameters["startup_timeout_seconds"] = "0.02";
+  const std::pair<const char *, const char *> calibration[] = {
+    {"metres_per_count","0.000001"}, {"encoder_zero_counts","0"},
+    {"velocity_mps_per_raw_unit","0.002"},
+    {"force_x_newtons_per_count","1"}, {"force_y_newtons_per_count","1"},
+    {"force_z_newtons_per_count","1"}, {"force_x_zero_counts","0"},
+    {"force_y_zero_counts","0"}, {"force_z_zero_counts","0"},
+    {"conventions_confirmed","true"}, {"force_frame","load_cell_link"},
+    {"force_channel_mapping","x,y,z"}};
+  for (const auto &[key, value] : calibration) info.hardware_parameters[key] = value;
   return info;
 }
 class HardwareTest : public ::testing::Test {
@@ -113,15 +83,15 @@ protected:
   void activate() {
     ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
     ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
-    for (unsigned i = 0; i < 10 && state("ethercat/ready") != 1; ++i) {
+    for (unsigned i = 0; i < 10 && !std::isfinite(state("carriage/position")); ++i) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       ASSERT_EQ(hw->read(time, period), Result::OK);
       ASSERT_EQ(hw->write(time, period), Result::OK);
     }
-    ASSERT_EQ(state("ethercat/ready"), 1);
-    ASSERT_EQ(commands[0].get_value(), 123);
+    ASSERT_TRUE(std::isfinite(state("carriage/position")));
+    ASSERT_DOUBLE_EQ(commands[0].get_value(), 123e-6);
     ASSERT_EQ(hw->perform_command_mode_switch(
-                  {"clearpath_axis/target_position_counts"}, {}),
+                  {"carriage/position"}, {}),
               Result::OK);
   }
   double state(const std::string &name) {
@@ -133,7 +103,7 @@ protected:
   Result cycle(double target) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     EXPECT_EQ(hw->read(time, period), Result::OK);
-    commands[0].set_value(target);
+    commands[0].set_value(target * 1e-6);
     return hw->write(time, period);
   }
   void finish_fault() {
@@ -162,14 +132,12 @@ TEST_F(HardwareTest, CycleOrderAndSingleOwnership) {
   EXPECT_EQ(fake_igh::order, "ARPFSQTARPSQT");
   EXPECT_EQ(fake_igh::sends, sends + 2);
   EXPECT_EQ(fake_igh::requests, 1U);
-  EXPECT_EQ(state("ethercat/read_calls"), 6);
-  EXPECT_EQ(state("ethercat/write_calls"), 6);
   EXPECT_EQ(hw->perform_command_mode_switch(
-                {}, {"clearpath_axis/target_position_counts"}),
+                {}, {"carriage/position"}),
             Result::OK);
-  const auto held = state("clearpath_axis/actual_position_counts");
+  const auto held = state("carriage/position");
   EXPECT_EQ(cycle(999999), Result::OK);
-  EXPECT_EQ(fake_igh::target(), held);
+  EXPECT_EQ(fake_igh::target(), std::lround(held / 1e-6));
   EXPECT_EQ(hw->on_deactivate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
   EXPECT_EQ(fake_igh::controlword(), 0);
   EXPECT_EQ(hw->on_cleanup(rclcpp_lifecycle::State{}), Callback::SUCCESS);
@@ -180,14 +148,22 @@ TEST_F(HardwareTest, InvalidCommandStopsWithoutForwarding) {
   activate();
   EXPECT_EQ(cycle(std::numeric_limits<double>::quiet_NaN()), Result::OK);
   EXPECT_EQ(fake_igh::target(), 123);
-  EXPECT_EQ(state("ethercat/invalid_commands"), 1);
   finish_fault();
 }
 TEST_F(HardwareTest, ExcessiveStepStops) {
   activate();
-  EXPECT_EQ(cycle(134), Result::OK);
+  EXPECT_EQ(cycle(1124), Result::OK);
   EXPECT_EQ(fake_igh::target(), 123);
-  EXPECT_EQ(state("ethercat/invalid_commands"), 1);
+  finish_fault();
+}
+TEST_F(HardwareTest, ActualThousandCountBoundAppliesAfterSiRounding) {
+  activate();
+  EXPECT_EQ(hw->prepare_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  EXPECT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  EXPECT_EQ(cycle(1123.49), Result::OK); // rounds to 1123, delta exactly 1000
+  EXPECT_EQ(fake_igh::target(), 1123);
+  EXPECT_EQ(cycle(2123.51), Result::OK); // rounds to 2124, delta 1001
+  EXPECT_EQ(fake_igh::target(), 1123);
   finish_fault();
 }
 TEST_F(HardwareTest, CommunicationLossStops) {
@@ -195,8 +171,7 @@ TEST_F(HardwareTest, CommunicationLossStops) {
   fake_igh::link = false;
   EXPECT_EQ(cycle(133), Result::OK);
   EXPECT_EQ(fake_igh::target(), 123);
-  EXPECT_EQ(state("ethercat/communication_faults"), 1);
-  EXPECT_EQ(state("ethercat/ready"), 0);
+  EXPECT_TRUE(std::isnan(state("carriage/position")));
   finish_fault();
 }
 TEST_F(HardwareTest, DriveLossStopsWithoutReenable) {
@@ -211,8 +186,8 @@ TEST_F(HardwareTest, InvalidElmStops) {
   activate();
   fake_igh::elm_valid = false;
   EXPECT_EQ(cycle(133), Result::OK);
-  EXPECT_EQ(state("ethercat/ready"), 0);
-  EXPECT_EQ(state("elm3604/x_valid"), 0);
+  EXPECT_TRUE(std::isnan(state("carriage/position")));
+  EXPECT_TRUE(std::isnan(state("load_cell/force.x")));
   finish_fault();
 }
 TEST_F(HardwareTest, LimitRejects) {
@@ -220,7 +195,6 @@ TEST_F(HardwareTest, LimitRejects) {
   EC_WRITE_U32(fake_igh::data.data() + fake_igh::offsets[0x60FD], 2);
   EXPECT_EQ(cycle(133), Result::OK);
   EXPECT_EQ(fake_igh::target(), 123);
-  EXPECT_EQ(state("ethercat/limit_rejections"), 1);
   finish_fault();
 }
 TEST_F(HardwareTest, StartupTimeoutAndCleanup) {
@@ -248,74 +222,6 @@ TEST_F(HardwareTest, ConfigurationFailuresReleaseOnce) {
   }
 }
 
-TEST(Plugins, ResourceManagerReadUpdateWrite) {
-  fake_igh::reset();
-  rclcpp::init(0, nullptr);
-  {
-    std::ifstream input(
-        ament_index_cpp::get_package_share_directory("zfc_bringup") +
-        "/urdf/ethercat.urdf");
-    std::ostringstream xml;
-    xml << input.rdbuf();
-    hardware_interface::ResourceManager manager(xml.str());
-    EXPECT_EQ(fake_igh::requests, 0U);
-    EXPECT_EQ(manager.state_interface_keys().size(), 25U);
-    EXPECT_EQ(manager.command_interface_keys().size(), 1U);
-    rclcpp_lifecycle::State active(
-        lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
-
-    pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
-        "controller_interface", "controller_interface::ControllerInterface");
-    auto controller = loader.createSharedInstance(
-        "zfc_zero_force_controller/ZeroForceController");
-    ASSERT_EQ(controller->init("resource_manager_shuttle", "",
-                               rclcpp::NodeOptions().parameter_overrides(
-                                   {rclcpp::Parameter("update_rate", 1000)})),
-              controller_interface::return_type::OK);
-    ASSERT_EQ(controller->configure().id(),
-              lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE);
-    const std::vector<std::string> names{
-        "clearpath_axis/target_position_counts"};
-    ASSERT_EQ(manager.set_component_state("EthercatSystem", active),
-              hardware_interface::return_type::OK);
-    const auto startup_period = rclcpp::Duration::from_nanoseconds(1000000);
-    for (int i = 0; i < 5; ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      ASSERT_TRUE(manager.read(rclcpp::Time(0), startup_period).ok);
-      ASSERT_TRUE(manager.write(rclcpp::Time(0), startup_period).ok);
-    }
-    ASSERT_TRUE(manager.perform_command_mode_switch(names, {}));
-    std::vector<hardware_interface::LoanedCommandInterface> commands;
-    commands.emplace_back(manager.claim_command_interface(names[0]));
-    std::vector<hardware_interface::LoanedStateInterface> states;
-    states.emplace_back(
-        manager.claim_state_interface("clearpath_axis/actual_position_counts"));
-    states.emplace_back(manager.claim_state_interface("ethercat/ready"));
-    controller->assign_interfaces(std::move(commands), std::move(states));
-    ASSERT_EQ(controller->on_activate(rclcpp_lifecycle::State{}),
-              Callback::SUCCESS);
-    const auto period = rclcpp::Duration::from_nanoseconds(1000000);
-    for (int i = 1; i <= 2010; ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      const rclcpp::Time time(std::int64_t(i) * 1000000);
-      ASSERT_TRUE(manager.read(time, period).ok);
-      ASSERT_EQ(controller->update(time, period),
-                controller_interface::return_type::OK);
-      ASSERT_TRUE(manager.write(time, period).ok);
-      EXPECT_EQ(fake_igh::target(), 123 + (i <= 1000   ? 10 * i
-                                           : i <= 2000 ? 10 * (2000 - i)
-                                                       : 0));
-    }
-    ASSERT_TRUE(manager.perform_command_mode_switch({}, names));
-    ASSERT_EQ(controller->on_deactivate(rclcpp_lifecycle::State{}),
-              Callback::SUCCESS);
-    controller->release_interfaces();
-    ASSERT_TRUE(manager.shutdown_components());
-    EXPECT_EQ(fake_igh::releases, 1U);
-  }
-  rclcpp::shutdown();
-}
-
 TEST_F(HardwareTest, ActivationIsPromptAndStartupIsIncremental) {
   ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
   EXPECT_EQ(fake_igh::sends, 0U);
@@ -324,10 +230,9 @@ TEST_F(HardwareTest, ActivationIsPromptAndStartupIsIncremental) {
   EXPECT_LT(std::chrono::steady_clock::now() - before,
             std::chrono::milliseconds(10));
   EXPECT_EQ(fake_igh::sends, 0U);
-  EXPECT_EQ(state("ethercat/ready"), 0);
-  EXPECT_EQ(hw->perform_command_mode_switch(
-                {"clearpath_axis/target_position_counts"}, {}),
-            Result::ERROR);
+  EXPECT_TRUE(std::isnan(state("carriage/position")));
+  EXPECT_EQ(hw->prepare_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  EXPECT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
   // A supplied period including prior lifecycle work is not an actual cyclic
   // gap.
   for (unsigned i = 0; i < 3; ++i) {
@@ -338,7 +243,7 @@ TEST_F(HardwareTest, ActivationIsPromptAndStartupIsIncremental) {
     EXPECT_EQ(fake_igh::sends, i + 1);
   }
   EXPECT_EQ(cycle(99999), Result::OK);
-  EXPECT_EQ(state("ethercat/ready"), 1);
+  ASSERT_TRUE(std::isfinite(state("carriage/position")));
   EXPECT_EQ(fake_igh::target(), 123);
 }
 TEST_F(HardwareTest, StartupCatchupDoesNotFloodBus) {
@@ -355,7 +260,7 @@ TEST_F(HardwareTest, ActualGapStillStops) {
   activate();
   std::this_thread::sleep_for(std::chrono::milliseconds(12));
   EXPECT_EQ(cycle(133), Result::OK);
-  EXPECT_EQ(state("ethercat/ready"), 0);
+  EXPECT_TRUE(std::isnan(state("carriage/position")));
   EXPECT_EQ(fake_igh::target(), 123);
   finish_fault();
 }
@@ -387,51 +292,6 @@ TEST_F(HardwareTest, FirstFaultSurvivesConsequencesAndErrorCleanup) {
   EXPECT_NE(diagnostic.find("event=on-error"), std::string::npos);
 }
 
-TEST(Plugins, HoldAndRestart) {
-  rclcpp::init(0, nullptr);
-  {
-    pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
-        "controller_interface", "controller_interface::ControllerInterface");
-    auto controller = loader.createSharedInstance(
-        "zfc_zero_force_controller/ZeroForceController");
-    ASSERT_EQ(controller->init("offline_hold", "",
-                               rclcpp::NodeOptions().parameter_overrides(
-                                   {rclcpp::Parameter("update_rate", 1000),
-                                    rclcpp::Parameter("hold_only", true)})),
-              controller_interface::return_type::OK);
-    ASSERT_EQ(controller->configure().id(),
-              lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE);
-    double actual = 123, target = -999, ready = 1;
-    hardware_interface::CommandInterface cmd("clearpath_axis",
-                                             "target_position_counts", &target);
-    hardware_interface::StateInterface pos("clearpath_axis",
-                                           "actual_position_counts", &actual);
-    hardware_interface::StateInterface state("ethercat", "ready", &ready);
-    std::vector<hardware_interface::LoanedCommandInterface> commands;
-    commands.emplace_back(cmd);
-    std::vector<hardware_interface::LoanedStateInterface> states;
-    states.emplace_back(pos);
-    states.emplace_back(state);
-    controller->assign_interfaces(std::move(commands), std::move(states));
-    for (int start : {123, -456}) {
-      actual = start;
-      ASSERT_EQ(controller->on_activate(rclcpp_lifecycle::State{}),
-                Callback::SUCCESS);
-      for (int i = 0; i < 3000; ++i) {
-        ASSERT_EQ(
-            controller->update(rclcpp::Time(0),
-                               rclcpp::Duration::from_nanoseconds(1000000)),
-            controller_interface::return_type::OK);
-        EXPECT_EQ(target, start);
-      }
-      EXPECT_EQ(controller->on_deactivate(rclcpp_lifecycle::State{}),
-                Callback::SUCCESS);
-    }
-    controller->release_interfaces();
-  }
-  rclcpp::shutdown();
-}
-
 TEST_F(HardwareTest, QuietDiagnosticsRetainsFaultAndStatusContract) {
   auto info = TestInfo();
   info.hardware_parameters["diagnostic_mode"] = "quiet";
@@ -440,9 +300,59 @@ TEST_F(HardwareTest, QuietDiagnosticsRetainsFaultAndStatusContract) {
   EXPECT_EQ(cycle(133), Result::OK);
   EXPECT_EQ(fake_igh::target(), 133);
   EXPECT_EQ(cycle(std::numeric_limits<double>::quiet_NaN()), Result::OK);
-  EXPECT_EQ(state("ethercat/ready"), 0);
-  EXPECT_EQ(state("ethercat/invalid_commands"), 1);
+  EXPECT_TRUE(std::isnan(state("carriage/position")));
   finish_fault();
   info.hardware_parameters["diagnostic_mode"] = "silent-faults";
   EXPECT_EQ(hw->on_init(info), Callback::ERROR);
+}
+
+TEST_F(HardwareTest, MissingCalibrationBlocksBeforeMasterRequest) {
+  auto info = TestInfo();
+  info.hardware_parameters.erase("velocity_mps_per_raw_unit");
+  ASSERT_EQ(hw->on_init(info), Callback::SUCCESS);
+  EXPECT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::FAILURE);
+  EXPECT_EQ(fake_igh::requests, 0U);
+}
+TEST_F(HardwareTest, NonfiniteCalibrationBlocksBeforeMasterRequest) {
+  auto info = TestInfo();
+  info.hardware_parameters["force_y_zero_counts"] = "nan";
+  ASSERT_EQ(hw->on_init(info), Callback::SUCCESS);
+  EXPECT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::FAILURE);
+  EXPECT_EQ(fake_igh::requests, 0U);
+}
+TEST_F(HardwareTest, FaultRejectsNewClaimsAndAllThreeForcesBecomeNaN) {
+  activate();
+  fake_igh::elm_valid = false;
+  EXPECT_EQ(cycle(133), Result::OK);
+  EXPECT_TRUE(std::isnan(state("load_cell/force.x")));
+  EXPECT_TRUE(std::isnan(state("load_cell/force.y")));
+  EXPECT_TRUE(std::isnan(state("load_cell/force.z")));
+  EXPECT_EQ(hw->prepare_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  EXPECT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  EXPECT_EQ(fake_igh::target(), 123);
+  finish_fault();
+}
+TEST_F(HardwareTest, NegativeScaleKeepsRawSwitchDirectionAndFollowingError) {
+  auto info = TestInfo();
+  info.hardware_parameters["metres_per_count"] = "-0.000001";
+  info.hardware_parameters["encoder_zero_counts"] = "500000";
+  ASSERT_EQ(hw->on_init(info), Callback::SUCCESS);
+  ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
+  for (int i = 0; i < 6; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_EQ(hw->read(time, period), Result::OK);
+    ASSERT_EQ(hw->write(time, period), Result::OK);
+  }
+  ASSERT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::OK);
+  EXPECT_NEAR(commands[0].get_value(), .499877, 1e-12);
+  // Positive raw switch forbids increasing counts: that is DOWN in SI.
+  EC_WRITE_U32(fake_igh::data.data() + fake_igh::offsets[0x60FD], 2);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  ASSERT_EQ(hw->read(time, period), Result::OK);
+  commands[0].set_value(.499867); // raw 133
+  EXPECT_EQ(hw->write(time, period), Result::OK);
+  EXPECT_EQ(fake_igh::target(), 123);
+  EXPECT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  finish_fault();
 }

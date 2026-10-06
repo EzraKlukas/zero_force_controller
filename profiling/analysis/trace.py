@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-FIELDS = re.findall(r"ZFC_TIMING_FIELD\((\w+)\)", (ROOT / "packages/zfc_ethercat_core/include/timing_fields.inc").read_text())
+FIELDS = re.findall(r"ZFC_TIMING_FIELD\((\w+)\)", (ROOT / "packages/zfc_timing/include/timing_fields.inc").read_text())
 HEADER = struct.Struct("<8q")
 MAGIC = 0x5A464354494D4531
 PERIOD = 1_000_000

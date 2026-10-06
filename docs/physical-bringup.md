@@ -1,5 +1,9 @@
 # Physical bring-up investigation — 2026-09-10
 
+Historical evidence below uses the old raw-count contract. The current
+[SI interface and smoke-test procedure](si-refactor.md) supersedes its interface
+names and startup commands; this record does not validate the refactor.
+
 One default moving shuttle run completed, after two successful 30-second
 no-motion acceptance holds. No second moving run was attempted. The controller
 and hardware were deactivated, the master released, and launch stopped normally.

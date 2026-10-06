@@ -1,0 +1,15 @@
+# Preparation only: future Gazebo plugin loads this after controllers.yaml.
+# Do not inherit hardware_components_initial_state from hardware.yaml.
+controller_manager:
+  ros__parameters:
+    use_sim_time: true
+    lock_memory: false
+zero_force_controller:
+  ros__parameters:
+    use_sim_time: true
+joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: true
+load_cell_broadcaster:
+  ros__parameters:
+    use_sim_time: true

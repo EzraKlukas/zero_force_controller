@@ -1,6 +1,6 @@
 # Timing schema 2
 
-Canonical field order: `packages/zfc_ethercat_core/include/timing_fields.inc`.
+Canonical field order: `packages/zfc_timing/include/timing_fields.inc`.
 Every field is a signed, little-endian 64-bit integer. The C++ record is a
 trivially copyable `std::array<int64_t, 66>`: **528 bytes**, alignment 8, no
 pointers, strings, floating-point values or implicit padding. The current

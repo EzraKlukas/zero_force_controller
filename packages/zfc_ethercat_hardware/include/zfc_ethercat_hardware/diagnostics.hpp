@@ -54,6 +54,7 @@ struct DiagnosticRecord {
   double target = 0;
   bool claimed = false, read_pending = false;
   unsigned stop_cycle = 120;
+  std::array<double, 25> raw_state{};
 };
 // Single serialized producer (Resource Manager), independent non-RT consumer.
 // No EtherCAT access from this thread. Losses are counted, never block RT.
@@ -133,11 +134,15 @@ private:
     }
     std::fprintf(stderr,
                  " changes=%llu excessive_periods=%llu max_interval_ns=%llu "
-                 "max_tracking_counts=%llu\n",
+        "max_tracking_counts=%llu raw_velocity=%d raw_torque=%d "
+        "backend_ready=%.0f communication_faults=%.0f invalid_commands=%.0f "
+        "limit_rejections=%.0f\n",
                  (unsigned long long)r.command_changes,
                  (unsigned long long)r.excessive_periods,
                  (unsigned long long)r.maximum_interval_ns,
-                 (unsigned long long)r.maximum_tracking_counts);
+                 (unsigned long long)r.maximum_tracking_counts,
+                 m.actual_velocity, m.actual_torque, r.raw_state[13],
+                 r.raw_state[21], r.raw_state[22], r.raw_state[24]);
   }
   static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
   std::array<DiagnosticRecord, 4096> records_{};

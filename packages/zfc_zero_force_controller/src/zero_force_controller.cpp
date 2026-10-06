@@ -7,22 +7,23 @@ using Result = controller_interface::return_type;
 controller_interface::InterfaceConfiguration
 ZeroForceController::command_interface_configuration() const {
   return {controller_interface::interface_configuration_type::INDIVIDUAL,
-          {"clearpath_axis/target_position_counts"}};
+          {joint_name_ + "/position"}};
 }
 controller_interface::InterfaceConfiguration
 ZeroForceController::state_interface_configuration() const {
   return {controller_interface::interface_configuration_type::INDIVIDUAL,
-          {"clearpath_axis/actual_position_counts", "ethercat/ready",
-           "elm3604/x_raw_counts", "elm3604/x_valid"}};
+          {joint_name_ + "/position", force_interface_}};
 }
 Callback ZeroForceController::on_init() {
   try {
-    auto_declare<bool>("do_calibrate_", false);
-    auto_declare<std::int32_t>("center_zone_half_width_", 1000);
-    auto_declare<std::int32_t>("base_velocity_", 500);
-    auto_declare<std::int32_t>("jerk_step_", 5);
-    auto_declare<std::int32_t>("max_acceleration_limit_", 20);
-    auto_declare<std::int32_t>("cycles_per_acceleration_increase_", 10);
+    auto_declare<std::string>("joint_name", "carriage");
+    auto_declare<std::string>("force_interface", "load_cell/force.x");
+    auto_declare<bool>("do_calibrate", false);
+    for (const auto *name : {"center_zone_half_width_m", "base_velocity_mps",
+         "jerk_mps3", "initial_acceleration_mps2",
+         "acceleration_increment_mps2", "max_acceleration_mps2"})
+      auto_declare<double>(name, std::numeric_limits<double>::quiet_NaN());
+    auto_declare<std::int64_t>("cycles_per_acceleration_increase", 5);
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
     return Callback::ERROR;
@@ -32,27 +33,32 @@ Callback ZeroForceController::on_init() {
 Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
   try {
     CalibrationParameters p;
-    p.do_calibrate_ = get_node()->get_parameter("do_calibrate_").as_bool();
-    p.center_zone_half_width_ =
-        get_node()->get_parameter("center_zone_half_width_").as_int();
-    p.base_velocity_ = get_node()->get_parameter("base_velocity_").as_int();
-    p.jerk_step_ = get_node()->get_parameter("jerk_step_").as_int();
-    p.max_acceleration_limit_ =
-        get_node()->get_parameter("max_acceleration_limit_").as_int();
-    p.cycles_per_acceleration_increase_ =
-        get_node()->get_parameter("cycles_per_acceleration_increase_").as_int();
+    joint_name_ = get_node()->get_parameter("joint_name").as_string();
+    force_interface_ = get_node()->get_parameter("force_interface").as_string();
+    if (joint_name_.empty() || joint_name_.find('/') != std::string::npos ||
+        force_interface_.find('/') == std::string::npos)
+      throw std::runtime_error("Require joint_name and resource/interface force_interface");
+    p.do_calibrate = get_node()->get_parameter("do_calibrate").as_bool();
+    p.center_zone_half_width_m = get_node()->get_parameter("center_zone_half_width_m").as_double();
+    p.base_velocity_mps = get_node()->get_parameter("base_velocity_mps").as_double();
+    p.jerk_mps3 = get_node()->get_parameter("jerk_mps3").as_double();
+    p.initial_acceleration_mps2 = get_node()->get_parameter("initial_acceleration_mps2").as_double();
+    p.acceleration_increment_mps2 = get_node()->get_parameter("acceleration_increment_mps2").as_double();
+    p.max_acceleration_mps2 = get_node()->get_parameter("max_acceleration_mps2").as_double();
+    p.cycles_per_acceleration_increase =
+        get_node()->get_parameter("cycles_per_acceleration_increase").as_int();
     if (sequencer_.configure(p))
       return Callback::SUCCESS;
-    RCLCPP_ERROR(get_node()->get_logger(), "Requires +ve bounded params.");
+    RCLCPP_ERROR(get_node()->get_logger(),
+                 "Calibration mode requires finite, set SI trajectory parameters and positive acceleration magnitudes");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
   }
   return Callback::ERROR;
 }
 Callback ZeroForceController::on_activate(const rclcpp_lifecycle::State &) {
-  if (command_interfaces_.size() != 1 || state_interfaces_.size() != 4 ||
-      state_interfaces_[1].get_value() != 1.0 ||
-      (state_interfaces_[3].get_value()) != 1.0 ||
+  if (command_interfaces_.size() != 1 || state_interfaces_.size() != 2 ||
+      !std::isfinite(state_interfaces_[1].get_value()) ||
       !sequencer_.activate(state_interfaces_[0].get_value()))
     return Callback::ERROR;
   failed_ = false;
@@ -72,30 +78,24 @@ Result ZeroForceController::update(const rclcpp::Time &,
                               zfc::timing::controller_exit);
   ZFC_VALUE(zfc::timing::controller_active, 1);
 
-  // declaring references to point to command and state interfaces
-  // corresponding with named variables for clearer code.
-  auto &target_position_counts = command_interfaces_[0];
-  // const auto &actual_position_counts = state_interfaces_[0];
-  const bool &ready = state_interfaces_[1].get_value() == 1.0;
-  const auto &x_raw_counts = state_interfaces_[2].get_value();
-  const bool &x_valid = state_interfaces_[3].get_value() == 1.0;
-
-  // Should I do checking of actual - target?
+  auto &target_position = command_interfaces_[0];
+  const bool valid = std::isfinite(state_interfaces_[0].get_value()) &&
+                     std::isfinite(state_interfaces_[1].get_value());
 
   bool ok = false;
-  if (ready) {
+  if (valid) {
     zfc::timing::Boundary calculation(zfc::timing::calculation_entry,
                                       zfc::timing::calculation_exit);
     ok = sequencer_.update(period.nanoseconds());
   }
-  if (!ready || !ok) {
+  if (failed_ || !valid || !ok) {
     failed_ = true;
     // Hardware treats this sentinel as a fault and executes its bounded
     // stop.
-    target_position_counts.set_value(std::numeric_limits<double>::quiet_NaN());
+    target_position.set_value(std::numeric_limits<double>::quiet_NaN());
     return Result::ERROR;
   }
-  target_position_counts.set_value(sequencer_.target());
+  target_position.set_value(sequencer_.target());
   return Result::OK;
 }
 } // namespace zfc_zero_force_controller

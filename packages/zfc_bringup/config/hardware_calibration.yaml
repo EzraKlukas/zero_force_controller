@@ -1,0 +1,20 @@
+# Installation data, not experiment-controller tuning.
+# No physical calibration is inferable from the photograph or current repo.
+# Hardware on_configure MUST reject unset/non-finite scales/datums.
+# Signed scales express axis polarity. Position zero is the lower travel datum;
+# never silently re-zero at activation. Raw velocity units need verification.
+metres_per_count: .nan
+conventions_confirmed: false
+force_frame: load_cell_link
+force_channel_mapping: "x,y,z"
+encoder_zero_counts: .nan
+velocity_mps_per_raw_unit: .nan
+# Draft assumes current X/Y/Z channels map to the named sensor frame axes.
+# Confirm axis order/signs and affine calibration; use a calibration matrix
+# instead if the real sensor requires coupling between channels.
+force_x_newtons_per_count: .nan
+force_y_newtons_per_count: .nan
+force_z_newtons_per_count: .nan
+force_x_zero_counts: .nan
+force_y_zero_counts: .nan
+force_z_zero_counts: .nan

@@ -1,18 +1,46 @@
+# Shared SI controller schema. Motion values await installation measurements.
+# Shared by EtherCAT and future Gazebo bringup. No backend settings here.
 controller_manager:
   ros__parameters:
-    hardware_components_initial_state:
-      unconfigured: [EthercatSystem]
     update_rate: 1000
-    use_sim_time: false
-    lock_memory: true
-    thread_priority: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    load_cell_broadcaster:
+      type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
     zero_force_controller:
       type: zfc_zero_force_controller/ZeroForceController
+
+joint_state_broadcaster:
+  ros__parameters:
+    joints: [carriage]
+    interfaces: [position, velocity]
+
+load_cell_broadcaster:
+  ros__parameters:
+    frame_id: load_cell_link
+    # A force-only sensor: do not use sensor_name, which requests all 6 axes.
+    interface_names:
+      force:
+        x: load_cell/force.x
+        y: load_cell/force.y
+        z: load_cell/force.z
+
 zero_force_controller:
   ros__parameters:
-    do_calibrate_: true
-    center_zone_half_width_: 1000
-    base_velocity_: 500
-    jerk_step_: 5
-    max_acceleration_limit_: 10
-    cycles_per_acceleration_increase_: 5
+    joint_name: carriage
+    force_interface: load_cell/force.x
+    do_calibrate: false
+    # Unset pending measured scale s = abs(metres_per_count).
+    # Preserve today's sequence at dt = 0.001 s:
+    # width=1000*s; speed=500*s/dt; jerk=5*s/dt^3;
+    # initial acceleration=increment=s/dt^2; max acceleration=10*s/dt^2.
+    # Set base_velocity_mps sign to encoder polarity to retain the old
+    # positive-count first leg; a positive SI value starts upward.
+    # Hold-only mode should not require unused trajectory parameters.
+    center_zone_half_width_m: .nan
+    base_velocity_mps: .nan
+    jerk_mps3: .nan
+    initial_acceleration_mps2: .nan
+    acceleration_increment_mps2: .nan
+    max_acceleration_mps2: .nan
+    cycles_per_acceleration_increase: 5

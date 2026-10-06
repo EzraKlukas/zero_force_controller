@@ -4,7 +4,7 @@ The instrumented `profile_control_node` runs Controller Manager's read → updat
 → write loop with the same hardware and application plugins as normal bringup.
 Its scheduling code follows the installed Humble Controller Manager 2.54.0;
 CMake requires that exact version so an upgrade requires reviewing the loop.
-The default profiling configuration uses `hold_only=true`. Launch leaves
+The default profiling configuration uses `do_calibrate=false`. Launch leaves
 hardware unconfigured and the controller inactive.
 
 Build from the repository root with ROS Humble sourced:
@@ -32,7 +32,7 @@ export ZFC_RUN_ID=1
 ros2 launch zfc_profiling profile.launch.py
 ```
 
-Follow the [bringup procedure](../README.md#conservative-physical-test-and-local-bring-up)
+Follow the [SI bringup procedure](../docs/si-refactor.md)
 for hardware readiness, deliberate controller activation, and shutdown. Hold
 mode seeds the measured position and never advances the ramp. Allow capacity
 for startup and warmup as well as the desired capture. Stop the controller,

@@ -9,37 +9,15 @@
 namespace zfc_ethercat_hardware {
 namespace {
 constexpr std::string_view command_name =
-    "clearpath_axis/target_position_counts";
+    "carriage/position";
 struct Interface {
   const char *resource;
   const char *name;
 };
-constexpr std::array<Interface, 25> interfaces{
-    {{"clearpath_axis", "actual_position_counts"},
-     {"clearpath_axis", "actual_velocity_raw"},
-     {"clearpath_axis", "actual_torque_raw"},
-     {"clearpath_axis", "statusword"},
-     {"clearpath_axis", "mode_display"},
-     {"clearpath_axis", "negative_limit"},
-     {"clearpath_axis", "positive_limit"},
-     {"elm3604", "x_raw_counts"},
-     {"elm3604", "y_raw_counts"},
-     {"elm3604", "z_raw_counts"},
-     {"elm3604", "x_valid"},
-     {"elm3604", "y_valid"},
-     {"elm3604", "z_valid"},
-     {"ethercat", "ready"},
-     {"ethercat", "link_up"},
-     {"ethercat", "slaves_responding"},
-     {"ethercat", "working_counter"},
-     {"ethercat", "working_counter_complete"},
-     {"ethercat", "communication_fault"},
-     {"ethercat", "read_calls"},
-     {"ethercat", "write_calls"},
-     {"ethercat", "communication_faults"},
-     {"ethercat", "invalid_commands"},
-     {"ethercat", "excessive_period_observations"},
-     {"ethercat", "limit_rejections"}}};
+constexpr std::array<Interface, 5> interfaces{{
+    {"carriage", "position"}, {"carriage", "velocity"},
+    {"load_cell", "force.x"}, {"load_cell", "force.y"},
+    {"load_cell", "force.z"}}};
 // Touch the control-thread stack once. Active cycles have no allocations.
 void PrefaultStack() noexcept {
   volatile unsigned char stack[8192];
@@ -57,7 +35,9 @@ EthercatHardware::~EthercatHardware() {
 }
 void EthercatHardware::reset() noexcept {
   state_.fill(0);
-  command_ = 0;
+  si_state_.fill(NAN);
+  // Keep the final measured SI hold across error/cleanup. Interfaces stay NaN
+  // until fresh, valid feedback is available on the next activation.
   previous_ = 0;
   active_ = claimed_ = fault_ = read_pending_ = prefaulted_ = false;
   stop_complete_ = true;
@@ -74,7 +54,9 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
   diagnostics_.start();
   try {
     for (const auto &[key, value] : info.hardware_parameters) {
-      if (key != "startup_timeout_seconds" && key != "max_increment_counts" &&
+      if (SiCalibration::parameter(key))
+        continue; // Validate all installation data in configure, before I/O.
+      if (key != "startup_timeout_seconds" &&
           key != "update_rate_hz" && key != "diagnostic_mode")
         throw std::runtime_error("Unknown hardware parameter: " + key);
       if (key == "diagnostic_mode") {
@@ -95,14 +77,14 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
             std::from_chars(value.data(), value.data() + value.size(), number);
         if (result.ec != std::errc{} ||
             result.ptr != value.data() + value.size() ||
-            (key == "update_rate_hz" ? number != 1000 : number > zfc::kMaximumVelocity))
+            number != 1000)
               {
                 throw std::runtime_error(
-                    "Require update_rate_hz=1000 and max_increment_counts=10");
+                    "Require update_rate_hz=1000");
               }
       }
     }
-    std::array<bool, 25> found{};
+    std::array<bool, 5> found{};
     unsigned commands = 0;
     auto check = [&](const auto &resources) {
       for (const auto &resource : resources) {
@@ -123,7 +105,12 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
         for (const auto &it : resource.command_interfaces) {
           if (resource.name + "/" + it.name != command_name || ++commands != 1)
             throw std::runtime_error(
-                "Only clearpath_axis/target_position_counts may be commanded");
+                "Only carriage/position may be commanded");
+          std::size_t used_min = 0, used_max = 0;
+          lower_ = std::stod(it.min, &used_min);
+          upper_ = std::stod(it.max, &used_max);
+          if (used_min != it.min.size() || used_max != it.max.size())
+            throw std::runtime_error("Invalid carriage command travel bounds");
         }
       }
     };
@@ -132,8 +119,7 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
     check(info.gpios);
     if (commands != 1 || !std::all_of(found.begin(), found.end(),
                                       [](bool value) { return value; }))
-      throw std::runtime_error("URDF must declare all 25 raw state interfaces "
-                               "and one count command");
+      throw std::runtime_error("Require carriage position/velocity, load_cell force.x/y/z, and one position command");
   } catch (const std::exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s", e.what());
     return Callback::ERROR;
@@ -145,13 +131,13 @@ EthercatHardware::export_state_interfaces() {
   std::vector<hardware_interface::StateInterface> result;
   result.reserve(interfaces.size());
   for (std::size_t i = 0; i < interfaces.size(); ++i)
-    result.emplace_back(interfaces[i].resource, interfaces[i].name, &state_[i]);
+    result.emplace_back(interfaces[i].resource, interfaces[i].name, &si_state_[i]);
   return result;
 }
 std::vector<hardware_interface::CommandInterface>
 EthercatHardware::export_command_interfaces() {
   std::vector<hardware_interface::CommandInterface> result;
-  result.emplace_back("clearpath_axis", "target_position_counts", &command_);
+  result.emplace_back("carriage", "position", &command_);
   return result;
 }
 EthercatHardware::Callback
@@ -160,6 +146,13 @@ EthercatHardware::on_configure(const rclcpp_lifecycle::State &) {
   first_fault_ = {};
   fault_reported_ = false;
   std::string error;
+  try {
+    calibration_ = SiCalibration::load(info_.hardware_parameters, lower_, upper_);
+  } catch (const std::exception &e) {
+    RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"),
+                 "Hardware configuration blocked before IgH access: %s", e.what());
+    return Callback::FAILURE;
+  }
   if (!core_.configure(error)) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"), "%s",
                  error.c_str());
@@ -189,6 +182,7 @@ EthercatHardware::on_activate(const rclcpp_lifecycle::State &) {
   maximum_interval_ns_ = maximum_tracking_counts_ = 0;
   startup_begin_ns_ = activation_end_ns_ = zfc::MonotonicNs();
   first_write_ = true;
+  hold_measured();
   copy_state();
   diagnostics_.push(record("activation-armed"));
   return Callback::SUCCESS;
@@ -197,11 +191,13 @@ EthercatHardware::on_activate(const rclcpp_lifecycle::State &) {
 bool EthercatHardware::stop() noexcept {
   active_ = claimed_ = starting_ = false;
   read_pending_ = false;
+  if (core_.configured())
+    hold_measured();
   if (stop_complete_ || !core_.configured())
     return true;
-  command_ = core_.snapshot().motor.actual_position;
   phase_ = "shutdown";
   const bool success = core_.shutdown();
+  hold_measured(); // shutdown exchanges may have supplied newer feedback
   if (!success)
     fault(FaultReason::shutdown_failure);
   diagnostics_.push(record(success ? "shutdown-confirmed" : "shutdown-failed"));
@@ -260,6 +256,29 @@ void EthercatHardware::copy_state() noexcept {
   state_[15] = s.bus.master.slaves_responding;
   state_[16] = s.bus.domain.working_counter;
   state_[17] = s.bus.domain.wc_state == EC_WC_COMPLETE;
+  si_state_.fill(NAN);
+  if (can_claim()) {
+    si_state_[0] = calibration_.position(s.motor.actual_position);
+    si_state_[1] = calibration_.velocity(s.motor.actual_velocity);
+    si_state_[2] = calibration_.force(0, s.elm.x.raw_sample);
+    si_state_[3] = calibration_.force(1, s.elm.y.raw_sample);
+    si_state_[4] = calibration_.force(2, s.elm.z.raw_sample);
+  }
+}
+void EthercatHardware::hold_measured() noexcept {
+  previous_ = core_.snapshot().motor.actual_position;
+  command_ = calibration_.position(previous_);
+}
+bool EthercatHardware::can_claim() const noexcept {
+  const auto &s = core_.snapshot();
+  return active_ && !starting_ && !fault_ && s.ready &&
+         zfc::ElmChannelValid(s.elm.x) && zfc::ElmChannelValid(s.elm.y) &&
+         zfc::ElmChannelValid(s.elm.z) &&
+         std::isfinite(calibration_.position(s.motor.actual_position)) &&
+         std::isfinite(calibration_.velocity(s.motor.actual_velocity)) &&
+         std::isfinite(calibration_.force(0, s.elm.x.raw_sample)) &&
+         std::isfinite(calibration_.force(1, s.elm.y.raw_sample)) &&
+         std::isfinite(calibration_.force(2, s.elm.z.raw_sample));
 }
 DiagnosticRecord EthercatHardware::record(const char *event) const noexcept {
   zfc::timing::FineSpan probe(zfc::timing::diagnostic_construct_ns);
@@ -280,7 +299,8 @@ DiagnosticRecord EthercatHardware::record(const char *event) const noexcept {
   r.maximum_interval_ns = maximum_interval_ns_;
   r.maximum_tracking_counts = maximum_tracking_counts_;
   r.snapshot = core_.snapshot();
-  r.target = command_;
+  r.raw_state = state_;
+  r.target = previous_; // Diagnostic target stays in native encoder counts.
   r.claimed = claimed_;
   r.read_pending = read_pending_;
   r.stop_cycle = stop_sequence_.cycle();
@@ -308,7 +328,8 @@ void EthercatHardware::fault(FaultReason reason) noexcept {
     state_[18] = 1;
     ++state_[21];
   }
-  command_ = core_.snapshot().motor.actual_position;
+  hold_measured();
+  si_state_.fill(NAN);
   stop_sequence_.start(core_.snapshot().motor);
 }
 EthercatHardware::Result EthercatHardware::perform_command_mode_switch(
@@ -320,17 +341,25 @@ EthercatHardware::Result EthercatHardware::perform_command_mode_switch(
       fault(FaultReason::invalid_command);
     }
     claimed_ = false;
-    command_ = previous_ = core_.snapshot().motor.actual_position;
+    hold_measured();
   }
   if (HasCommand(start)) {
-    if (!active_ || starting_ || fault_ || !core_.snapshot().ready)
+    if (!can_claim() || claimed_)
       return Result::ERROR;
-    command_ = previous_ = core_.snapshot().motor.actual_position;
+    hold_measured();
     claimed_ = true;
     command_changes_ = 0;
     observed_target_ = previous_;
     diagnostics_.push(record("motion-start"));
   }
+  return Result::OK;
+}
+EthercatHardware::Result EthercatHardware::prepare_command_mode_switch(
+    const std::vector<std::string> &start,
+    const std::vector<std::string> &stop_names) {
+  if (HasCommand(start) &&
+      (!can_claim() || (claimed_ && !HasCommand(stop_names))))
+    return Result::ERROR;
   return Result::OK;
 }
 EthercatHardware::Result
@@ -428,7 +457,7 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
   if (starting_ && !fault_) {
     CiA402::UpdateCSPEnableState(core_.snapshot().motor, &output);
     output.target_position = core_.snapshot().motor.actual_position;
-    command_ = previous_ = output.target_position;
+    hold_measured();
     if (core_.snapshot().ready) {
       starting_ = false;
       phase_ = "active";
@@ -438,9 +467,12 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
   } else if (active_ && !fault_) {
     {
       std::int32_t counts;
-      const auto validation = zfc::ValidateCommand(
-          claimed_ ? command_ : double(previous_), previous_,
-          core_.snapshot().motor, zfc::kMaximumVelocity, counts);
+      std::int32_t converted = previous_;
+      const bool converted_ok = !claimed_ || calibration_.to_counts(command_, converted);
+      const auto validation = converted_ok ? zfc::ValidateCommand(
+          double(converted), previous_,
+          core_.snapshot().motor, zfc::kMaximumVelocity, counts)
+          : zfc::CommandResult::invalid;
       if (validation != zfc::CommandResult::valid) {
         if (validation == zfc::CommandResult::limit)
           ++state_[24];
@@ -457,6 +489,7 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
     output.controlword = CiA402::kControlwordEnableOperation;
   }
   if (fault_) {
+    hold_measured();
     // One stop step per CM cycle; no extra scheduling authority.
     // Wait for one more read after the final disable-voltage frame before
     // ERROR.

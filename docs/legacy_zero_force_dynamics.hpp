@@ -1,4 +1,6 @@
 #pragma once
+// Historical, unfinished count-domain prototype; deliberately excluded from
+// the transport-independent controller and its installed public headers.
 #include "count_command.hpp"
 #include <ethercat_system.hpp>
 namespace zfc_zero_force_controller {

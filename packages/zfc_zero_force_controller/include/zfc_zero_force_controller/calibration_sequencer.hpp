@@ -1,27 +1,39 @@
 #pragma once
-#include "count_command.hpp"
-#include <ethercat_system.hpp>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 namespace zfc_zero_force_controller {
 struct CalibrationParameters {
-  bool do_calibrate_ = true;
-  std::int32_t center_zone_half_width_ = 1000;
-  std::int32_t base_velocity_ = 500;
-  std::int32_t jerk_step_ = 5;
-  std::int32_t max_acceleration_limit_ = 20;
-  std::int32_t cycles_per_acceleration_increase_ = 10;
+  bool do_calibrate = false;
+  double center_zone_half_width_m = NAN;
+  // Signed SI velocity permits preserving the original first-leg direction.
+  double base_velocity_mps = NAN;
+  double jerk_mps3 = NAN;
+  double initial_acceleration_mps2 = NAN;
+  double acceleration_increment_mps2 = NAN;
+  double max_acceleration_mps2 = NAN;
+  std::int64_t cycles_per_acceleration_increase = 5;
 };
 
-// Each accepted update updates position and internal variables, without heap
-// storage or time integration.
+// Nominal 1 kHz discrete recurrence; measured period only validates scheduling.
 class CalibrationSequencer {
 public:
+  static constexpr double dt = 0.001;
   static bool valid(const CalibrationParameters &p) noexcept {
-    return p.center_zone_half_width_ > 0 &&
-           p.center_zone_half_width_ <= 10000 && p.base_velocity_ > 0 &&
-           p.base_velocity_ <= zfc::kMaximumVelocity && p.jerk_step_ > 0 &&
-           p.jerk_step_ <= zfc::kMaximumJerk && p.max_acceleration_limit_ > 0 &&
-           p.max_acceleration_limit_ <= zfc::kMaximumAcceleration &&
-           p.cycles_per_acceleration_increase_ >= 1;
+    if (!p.do_calibrate)
+      return true;
+    return std::isfinite(p.center_zone_half_width_m) &&
+           p.center_zone_half_width_m > 0 &&
+           std::isfinite(p.base_velocity_mps) && p.base_velocity_mps != 0 &&
+           std::isfinite(p.jerk_mps3) && p.jerk_mps3 > 0 &&
+           std::isfinite(p.initial_acceleration_mps2) &&
+           p.initial_acceleration_mps2 > 0 &&
+           std::isfinite(p.acceleration_increment_mps2) &&
+           p.acceleration_increment_mps2 > 0 &&
+           std::isfinite(p.max_acceleration_mps2) &&
+           p.max_acceleration_mps2 >= p.initial_acceleration_mps2 &&
+           p.cycles_per_acceleration_increase >= 1;
   }
   bool configure(const CalibrationParameters &p) noexcept {
     reset();
@@ -32,105 +44,91 @@ public:
   }
   bool activate(double actual) noexcept {
     reset();
-    std::int32_t start;
-    if (!configured_ || !zfc::ToCounts(actual, start))
+    if (!configured_ || !std::isfinite(actual))
       return false;
-    start_position_ = commanded_position_ = start;
-    acceleration_limit_ = 1;
+    start_position_ = commanded_position_ = actual;
+    acceleration_limit_ = p_.initial_acceleration_mps2;
     active_ = true;
     return true;
   }
   void reset() noexcept {
-    active_ = false;
-    finished_ = false;
-    update_count_ = 0;
+    active_ = finished_ = false;
     start_position_ = commanded_position_ = 0;
-    velocity_ = acceleration_ = 0;
-    acceleration_limit_ = 0;
+    displacement_ = displacement_error_ = velocity_error_ = 0;
+    velocity_ = acceleration_ = acceleration_limit_ = 0;
     completed_shuttle_cycles_ = 0;
+    positive_center_pass_counted_ = true;
     excessive_periods_ = 0;
   }
   bool update(std::int64_t period_ns) noexcept {
     if (!active_ || period_ns <= 0)
       return false;
-    // Observe jitter without changing the requested cycle-count sequence.
-    // A gap beyond 10 ms faults; it is never compensated by a larger step.
     if (period_ns > 1500000)
       ++excessive_periods_;
     if (period_ns > 10000000)
       return false;
-    if (finished_ || !p_.do_calibrate_)
+    if (finished_ || !p_.do_calibrate)
       return true;
 
-    const auto displacement_from_start = commanded_position_ - start_position_;
-
-    const std::int32_t direction_sign = displacement_from_start >= 0 ? 1 : -1;
-
-    const bool in_center_zone =
-        std::abs(displacement_from_start) < p_.center_zone_half_width_;
-
-    if (in_center_zone) {
-      if (velocity_ == 0) { // starting condition.
-        velocity_ = p_.base_velocity_;
-      }
-
-      velocity_ = std::clamp(velocity_, -p_.base_velocity_, p_.base_velocity_);
-
-      if (!positive_center_pass_counted_ && velocity_ > 0) {
+    const double displacement = displacement_;
+    const double direction = displacement >= 0 ? 1 : -1;
+    // Avoid a different branch at an exact count-equivalent center boundary
+    // solely from floating point roundoff after conversion to SI.
+    const double epsilon = 1e-9 * p_.center_zone_half_width_m;
+    const bool in_center =
+        std::abs(displacement) < p_.center_zone_half_width_m - epsilon;
+    const double speed = std::abs(p_.base_velocity_mps);
+    if (in_center) {
+      if (velocity_ == 0)
+        velocity_ = p_.base_velocity_mps;
+      const double clamped = std::clamp(velocity_, -speed, speed);
+      if (clamped != velocity_)
+        velocity_error_ = 0;
+      velocity_ = clamped;
+      if (!positive_center_pass_counted_ &&
+          velocity_ * p_.base_velocity_mps > 0) {
         ++completed_shuttle_cycles_;
-
-        if (completed_shuttle_cycles_ >= p_.cycles_per_acceleration_increase_) {
+        if (completed_shuttle_cycles_ >= p_.cycles_per_acceleration_increase) {
           completed_shuttle_cycles_ = 0;
-          ++acceleration_limit_;
-
-          if (acceleration_limit_ >= p_.max_acceleration_limit_) {
+          acceleration_limit_ += p_.acceleration_increment_mps2;
+          const double tolerance = 64 * std::numeric_limits<double>::epsilon() *
+                                   p_.max_acceleration_mps2;
+          if (acceleration_limit_ >= p_.max_acceleration_mps2 - tolerance)
             finished_ = true;
-          }
         }
-
         positive_center_pass_counted_ = true;
       }
     } else {
       positive_center_pass_counted_ = false;
-
-      acceleration_ -= direction_sign * p_.jerk_step_;
-
-      acceleration_ =
-          std::clamp(acceleration_, -acceleration_limit_, acceleration_limit_);
-
-      velocity_ += acceleration_;
+      acceleration_ -= direction * p_.jerk_mps3 * dt;
+      acceleration_ = std::clamp(acceleration_, -acceleration_limit_,
+                                  acceleration_limit_);
+      accumulate(velocity_, velocity_error_, acceleration_ * dt);
     }
-
-    commanded_position_ += velocity_;
-
-    return true;
+    // Preserve the last accepted step on the completion cycle.
+    accumulate(displacement_, displacement_error_, velocity_ * dt);
+    commanded_position_ = start_position_ + displacement_;
+    return std::isfinite(commanded_position_) && std::isfinite(velocity_) &&
+           std::isfinite(acceleration_);
   }
-  std::int32_t target() const noexcept { return commanded_position_; }
-  std::uint64_t excessive_periods() const noexcept {
-    return excessive_periods_;
-  }
-  bool finished_calibration() noexcept { return finished_; }
-
+  double target() const noexcept { return commanded_position_; }
+  std::uint64_t excessive_periods() const noexcept { return excessive_periods_; }
+  bool finished_calibration() const noexcept { return finished_; }
 private:
+  // Compensated sums keep SI roundoff from moving exact legacy center crossings.
+  static void accumulate(double &sum, double &error, double step) noexcept {
+    const double corrected = step - error;
+    const double next = sum + corrected;
+    error = (next - sum) - corrected;
+    sum = next;
+  }
   CalibrationParameters p_{};
-  // function specific parameters included
-  bool configured_ = false;
-  bool active_ = false;
-  bool finished_ = false;
-
-  std::int64_t update_count_ = 0;
-
-  // Motion state
-  std::int32_t start_position_ = 0;
-  std::int32_t commanded_position_ = 0;
-  std::int32_t velocity_ = 0;
-  std::int32_t acceleration_ = 0;
-
-  // Acceleration ramp state
-  std::int32_t acceleration_limit_ = 0;
-  std::int32_t completed_shuttle_cycles_ = 0;
+  bool configured_ = false, active_ = false, finished_ = false;
+  double start_position_ = 0, commanded_position_ = 0;
+  double displacement_ = 0, displacement_error_ = 0, velocity_error_ = 0;
+  double velocity_ = 0, acceleration_ = 0, acceleration_limit_ = 0;
+  std::int64_t completed_shuttle_cycles_ = 0;
   bool positive_center_pass_counted_ = true;
-
   std::uint64_t excessive_periods_ = 0;
 };
 } // namespace zfc_zero_force_controller

@@ -2,6 +2,7 @@
 #include "count_command.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "zfc_ethercat_hardware/diagnostics.hpp"
+#include "zfc_ethercat_hardware/si_calibration.hpp"
 #include <array>
 namespace zfc_ethercat_hardware {
 class EthercatHardware : public hardware_interface::SystemInterface {
@@ -22,11 +23,15 @@ public:
   export_command_interfaces() override;
   Result perform_command_mode_switch(const std::vector<std::string> &,
                                      const std::vector<std::string> &) override;
+  Result prepare_command_mode_switch(const std::vector<std::string> &,
+                                    const std::vector<std::string> &) override;
   Result read(const rclcpp::Time &, const rclcpp::Duration &) override;
   Result write(const rclcpp::Time &, const rclcpp::Duration &) override;
 
 private:
   void copy_state() noexcept;
+  void hold_measured() noexcept;
+  bool can_claim() const noexcept;
   void fault(FaultReason reason) noexcept;
   DiagnosticRecord record(const char *event) const noexcept;
   void report_fault() noexcept;
@@ -35,7 +40,10 @@ private:
   zfc::EthercatSystem core_;
   zfc::StopSequence stop_sequence_;
   std::array<double, 25> state_{};
-  double command_ = 0, startup_timeout_ = 20;
+  std::array<double, 5> si_state_{};
+  SiCalibration calibration_;
+  double lower_ = NAN, upper_ = NAN;
+  double command_ = NAN, startup_timeout_ = 20;
   std::int32_t previous_ = 0;
   bool active_ = false, claimed_ = false, fault_ = false, stop_complete_ = true;
   bool read_pending_ = false, prefaulted_ = false;
