@@ -2,8 +2,9 @@
 
 The instrumented `profile_control_node` runs Controller Manager's read → update
 → write loop with the same hardware and application plugins as normal bringup.
-Its scheduling code follows the installed Humble Controller Manager 2.54.0;
-CMake requires that exact version so an upgrade requires reviewing the loop.
+Its scheduling code follows Humble Controller Manager 2.54;
+CMake requires that API family (currently installed 2.54.2). An upgrade still
+requires reviewing the loop.
 The default profiling configuration uses `hold_only=true`. Launch leaves
 hardware unconfigured and the controller inactive.
 
@@ -11,6 +12,7 @@ Build from the repository root with ROS Humble sourced:
 
 ```bash
 colcon build --base-paths packages --build-base build/profile \
+  --packages-ignore zfc_ethercat_core zfc_ethercat_hardware \
   --install-base build/profile-install --executor sequential \
   --cmake-args -DBUILD_TESTING=ON -DZFC_PROFILING=COARSE
 source build/profile-install/setup.bash
@@ -82,5 +84,14 @@ python3 profiling/analysis/fixture.py /tmp/zfc-fixtures
 The committed `fixtures/synthetic-cm` is artificial data for schema tests only.
 Notebook dependencies are listed in `analysis/requirements.txt`. Static notebook
 validation is sufficient during code cleanup; running Jupyter or collecting
-hardware data is not required. `analysis/validate.sh` runs the offline C++ test
-matrix for all three probe levels using the fake IgH test backend.
+hardware data is not required. `analysis/validate.sh` runs the offline test
+matrix for all three probe levels, excluding the EtherCAT packages by default.
+`ZFC_WITH_IGH=1` opts into those packages on an SDK-equipped Jetson; enable
+`ZFC_HARDWARE_TESTS` separately for SDK-dependent protection fixtures. No fake
+production backend is supplied.
+
+The non-RT calibration analysis worker is separate from both cycle profiling
+and controller telemetry. Its regression/CSV work is never in update(). See
+[calibration-workflow.md](../docs/calibration-workflow.md) for the simulated
+action workflow and OFF/FINE verification. Synthetic fixtures test accounting
+only, not physical latency or scheduling.

@@ -12,6 +12,7 @@
 #include <ignition/transport/Node.hh>
 #include <ignition/msgs/entity_wrench.pb.h>
 #include <ignition/msgs/double.pb.h>
+#include <ignition/msgs/boolean.pb.h>
 namespace zfc_simulation {
 namespace sim=ignition::gazebo;
 std::int64_t wall_ns() {
@@ -25,6 +26,8 @@ public:
                  sim::EntityComponentManager &,sim::EventManager &) override {
     node_.Subscribe("/world/zfc/force_input",&WorldForce::receive,this);
     applied_=node_.Advertise<ignition::msgs::Double>("/world/zfc/applied_force");
+    node_.Subscribe("/world/zfc/force_enable",&WorldForce::enable,this);
+    enabled_=node_.Advertise<ignition::msgs::Boolean>("/world/zfc/force_enabled");
   }
   void PreUpdate(const sim::UpdateInfo &info,sim::EntityComponentManager &ecm) override {
     if (info.paused) return;
@@ -36,10 +39,12 @@ public:
           sim::components::Name("tool_link"),sim::components::ParentEntity(model));
     }
     double force;
+    bool enabled;
     {
       // Non-RT simulation callback only; no ROS/control-thread dependency.
       std::lock_guard<std::mutex> lock(mutex_);
       force=command_.value(wall_ns());
+      enabled=command_.enabled;
     }
     if (link_!=sim::kNullEntity) {
       // The reviewed tool COM is at its link origin. AddWorldForce silently
@@ -48,9 +53,16 @@ public:
       ignition::msgs::Double msg;
       msg.set_data(force);
       applied_.Publish(msg);
+      ignition::msgs::Boolean ack;
+      ack.set_data(enabled);
+      enabled_.Publish(ack); // Physics-step acknowledgment, not transport receipt.
     }
   }
 private:
+  void enable(const ignition::msgs::Boolean &msg) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (command_.enabled!=msg.data()) command_.enable(msg.data());
+  }
   void receive(const ignition::msgs::EntityWrench &msg) {
     const auto &w=msg.wrench();
     const bool valid=msg.entity().name()=="stage::tool_link" &&
@@ -62,6 +74,7 @@ private:
   }
   ignition::transport::Node node_;
   ignition::transport::Node::Publisher applied_;
+  ignition::transport::Node::Publisher enabled_;
   sim::Entity link_=sim::kNullEntity;
   std::mutex mutex_;
   ForceCommand command_;

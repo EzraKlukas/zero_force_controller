@@ -20,6 +20,8 @@ class ForceInput(Node):
         super().__init__("simulation_force_input")
         self.force = 0.
         self.ready = False
+        self.enabled = False
+        self.create_subscription(Bool, "/simulation/force_enabled", self.interlock, 10)
         self.pub = self.create_publisher(EntityWrench, "/simulation/force_input", 10)
         self.create_subscription(Bool, "/simulation/ready", lambda m: setattr(self, "ready", m.data),
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -29,8 +31,15 @@ class ForceInput(Node):
     def send(self):
         m = EntityWrench()
         m.entity.name, m.entity.type = "stage::tool_link", Entity.LINK
-        m.wrench.force.z = self.force if self.ready else 0.
+        m.wrench.force.z = self.force if self.ready and self.enabled else 0.
         self.pub.publish(m)
+
+    def interlock(self, msg):
+        if msg.data != self.enabled:
+            self.force = 0. # Re-enable cannot resurrect a disabled GUI/CLI request.
+        self.enabled = msg.data
+        if not self.enabled:
+            self.force = 0.
 
 
 def main():
@@ -69,15 +78,21 @@ def main():
                 button.clicked.connect(lambda checked=False, v=value: slider.setValue(v))
                 layout.addWidget(button)
             timer = QTimer()
-            timer.timeout.connect(lambda: rclpy.spin_once(node, timeout_sec=0))
+            def poll():
+                rclpy.spin_once(node, timeout_sec=0)
+                slider.setEnabled(node.enabled)
+                if not node.enabled:
+                    slider.setValue(0)
+                    label.setText("Calibration interlock — force disabled")
+            timer.timeout.connect(poll)
             timer.start(10)
             window.show()
             app.exec()
         else:
             deadline = time.monotonic()+args.timeout
-            while (not node.ready or node.get_clock().now().nanoseconds == 0) and time.monotonic() < deadline:
+            while (not node.ready or not node.enabled or node.get_clock().now().nanoseconds == 0) and time.monotonic() < deadline:
                 rclpy.spin_once(node, timeout_sec=.05)
-            if not node.ready or node.get_clock().now().nanoseconds == 0:
+            if not node.ready or not node.enabled or node.get_clock().now().nanoseconds == 0:
                 raise RuntimeError("Simulation readiness timeout")
             start = node.get_clock().now().nanoseconds
             node.force = args.force

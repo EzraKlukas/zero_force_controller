@@ -26,6 +26,7 @@ def build_physical_nodes(backend, controllers_file, hardware_file, calibration_f
         mappings={"backend": backend, "controllers_file": controllers_file,
                   "hardware_calibration_file": calibration_file}).toxml()
     nodes = [
+        analysis_node(False),
         Node(package="robot_state_publisher", executable="robot_state_publisher",
              output="screen", parameters=[{"robot_description": description}]),
         Node(package="controller_manager", executable="ros2_control_node",
@@ -39,6 +40,14 @@ def build_physical_nodes(backend, controllers_file, hardware_file, calibration_f
             arguments=[name, "--inactive", "--controller-manager", "/controller_manager",
                        "--controller-manager-timeout", "60"], output="screen"))
     return nodes
+
+
+def analysis_node(simulation, tool_mass=.2):
+    share = Path(get_package_share_directory('zfc_calibration_analysis'))
+    return Node(package='zfc_calibration_analysis', executable='calibration_analysis',
+                parameters=[str(share/'config/analysis.yaml'),
+                            {'use_sim_time': simulation, 'backend': 'gazebo' if simulation else 'ethercat',
+                             'known_downstream_mass_kg': tool_mass+.05}], output='screen')
 
 
 def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False):
@@ -80,7 +89,7 @@ def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False):
         if event.returncode != 0:
             return [EmitEvent(event=Shutdown(reason="Simulation startup gate/spawner failed"))]
         return []
-    actions = [server,
+    actions = [server, analysis_node(True, tool_mass),
         RegisterEventHandler(OnProcessExit(target_action=server,
             on_exit=[EmitEvent(event=Shutdown(reason="Gazebo server exited"))])),
         RegisterEventHandler(OnProcessExit(target_action=spawn, on_exit=after_spawn)),

@@ -1,0 +1,28 @@
+calibration_analysis:
+  ros__parameters:
+    backend: gazebo
+    controller_manager: /controller_manager
+    calibration_controller: calibration_sequencer_controller
+    zero_force_controller: zero_force_controller
+    output_directory: /tmp/zfc-calibration-trials
+    service_timeout_s: 8.0
+    capture_timeout_s: 120.0
+    drain_timeout_s: 8.0
+    baseline_timeout_s: 15.0
+    maximum_samples: 120000
+    maximum_gap_s: 0.01
+    expected_coefficient_sign: 1
+    minimum_acceleration_mps2: 0.1
+    maximum_acceleration_mps2: 2.1
+    plateau_settle_s: 0.05
+    plateau_end_guard_s: 0.01
+    reversal_guard_s: 0.02
+    minimum_plateau_samples: 8
+    minimum_plateaus_per_branch: 3
+    minimum_r_squared: 0.95
+    maximum_residual_rms_n: 0.05
+    maximum_branch_difference_fraction: 0.15
+    maximum_coefficient_kg: 10.0
+    maximum_tracking_error_m: 0.002
+    maximum_velocity_error_mps: 0.025
+    known_downstream_mass_kg: 0.25

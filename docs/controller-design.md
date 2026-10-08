@@ -1,5 +1,10 @@
 # SI controllers and trial contract — 8 October 2026
 
+The asynchronous analysis node now reuses this capture/parameter contract; see
+[calibration-workflow.md](calibration-workflow.md) for actions, fitting evidence,
+application and failure/restart semantics. Neither C++ update state machine nor
+installation/session conversion was changed by that task.
+
 Starting checkout: clean `e7453b5`, repository root, Ubuntu 22.04 Distrobox,
 ROS 2 Humble. No on-disk AGENTS.md was found; supplied working agreements apply.
 No hardware, IgH SDK, simulator, fitting node or coordinator was used. No commit

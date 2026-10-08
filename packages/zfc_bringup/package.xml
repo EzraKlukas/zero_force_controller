@@ -16,6 +16,7 @@
   <exec_depend>zfc_ethercat_hardware</exec_depend>
   <exec_depend>zfc_zero_force_controller</exec_depend>
   <exec_depend>zfc_calibration_controller</exec_depend>
+  <exec_depend>zfc_calibration_analysis</exec_depend>
   <exec_depend>zfc_simulation</exec_depend>
   <exec_depend>gz_ros2_control</exec_depend><exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend><exec_depend>plotjuggler_ros</exec_depend>

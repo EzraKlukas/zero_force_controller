@@ -1,5 +1,11 @@
 # Fortress lab demonstration
 
+The next handoff adds one asynchronous analysis node; see
+[calibration-workflow.md](calibration-workflow.md). The original bringup evidence
+below remains historical. New simulation force-enable/ack bridges inhibit all
+input writers during calibration; the installed plot layout also includes
+`/calibration_analysis/state` progress/result telemetry.
+
 This is the simulation bringup handoff after controller separation, starting
 from clean `a427138` on 8 October 2026. No physical hardware was started, no IgH
 SDK was used, and no fitting/coordinator node or actuator dynamics was added.

@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root>
   <tabbed_widget name="Main Window" parent="main_window">
+    <Tab tab_name="Analysis: progress and result" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Analysis progress/result">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/calibration_analysis/state/progress" color="#2060c0"/>
+          <curve name="/calibration_analysis/state/stage_code" color="#e07030"/>
+          <curve name="/calibration_analysis/state/fit/inertial_force_coefficient_kg" color="#20a060"/>
+          <curve name="/calibration_analysis/state/fit/r_squared" color="#9060a0"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
     <Tab tab_name="Zero force: Position (m)" containers="1"><Container>
       <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Position (m)">
         <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
@@ -103,7 +113,7 @@
     <use_header_stamp value="true"/><discard_large_arrays value="true"/>
     <max_array_size value="100"/><boolean_strings_to_number value="true"/>
     <remove_suffix_from_strings value="true"/>
-    <selected_topics value="/plot/zero_force;/plot/calibration"/>
+      <selected_topics value="/plot/zero_force;/plot/calibration;/calibration_analysis/state"/>
   </plugin></Plugins>
   <previouslyLoaded_Streamer name="ROS2 Topic Subscriber"/>
 </root>

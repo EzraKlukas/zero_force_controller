@@ -12,3 +12,11 @@ TEST(ForceCommand, ReplacesBoundsReleasesAndExpiresIncludingPause) {
   c.receive(NAN,60); EXPECT_EQ(c.value(70),0);
   c.receive(4,80,false); EXPECT_EQ(c.value(90),0);
 }
+TEST(ForceCommand, InterlockRejectsInputsAndNeverResurrectsPush) {
+  zfc_simulation::ForceCommand c;
+  c.receive(4,10); c.enable(false);
+  EXPECT_EQ(c.value(20),0);
+  c.receive(-3,30); EXPECT_EQ(c.value(40),0);
+  c.enable(true); EXPECT_EQ(c.value(50),0);
+  c.receive(2,60); EXPECT_EQ(c.value(70),2);
+}

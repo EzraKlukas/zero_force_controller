@@ -141,7 +141,7 @@ def test_plot_layout_contract():
     plugin = root.find("Plugins/plugin")
     assert plugin.attrib["ID"] == "ROS2 Topic Subscriber"
     assert plugin.find("use_header_stamp").attrib["value"] == "true"
-    assert plugin.find("selected_topics").attrib["value"] == "/plot/zero_force;/plot/calibration"
+    assert plugin.find("selected_topics").attrib["value"] == "/plot/zero_force;/plot/calibration;/calibration_analysis/state"
     assert root.find("previouslyLoaded_Streamer").attrib["name"] == "ROS2 Topic Subscriber"
     plotted = {c.attrib["name"] for c in root.findall(".//Tab//curve")}
     assert root.find(".//plotmatrix") is None
