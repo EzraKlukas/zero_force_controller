@@ -22,7 +22,8 @@ enum class FaultReason {
   invalid_command,
   excessive_increment,
   logical_limit,
-  shutdown_failure
+  shutdown_failure,
+  encoder_discontinuity
 };
 inline const char *FaultName(FaultReason r) noexcept {
   constexpr const char *names[] = {"none",
@@ -39,7 +40,8 @@ inline const char *FaultName(FaultReason r) noexcept {
                                    "invalid_command",
                                    "excessive_increment",
                                    "logical_limit",
-                                   "shutdown_failure"};
+                                   "shutdown_failure",
+                                   "encoder_discontinuity"};
   return names[static_cast<unsigned>(r)];
 }
 struct DiagnosticRecord {

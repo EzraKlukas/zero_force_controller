@@ -2,87 +2,96 @@
 #include <gtest/gtest.h>
 #include <map>
 using zfc_ethercat_hardware::SiCalibration;
-std::map<std::string, std::string> installation() {
-  return {{"metres_per_count","0.001"}, {"encoder_zero_counts","100"},
+using zfc_ethercat_hardware::EncoderSession;
+std::map<std::string,std::string> installation() {
+  return {{"m_per_count","0.001"},{"velocity_from_encoder","false"},
     {"velocity_mps_per_raw_unit","0.02"},
-    {"force_x_newtons_per_count","2"}, {"force_y_newtons_per_count","-3"},
-    {"force_z_newtons_per_count","4"}, {"force_x_zero_counts","10"},
-    {"force_y_zero_counts","20"}, {"force_z_zero_counts","30"},
-    {"conventions_confirmed","true"}, {"force_frame","load_cell_link"},
+    {"force_x_newtons_per_count","2"},{"force_y_newtons_per_count","-3"},
+    {"force_z_newtons_per_count","4"},{"force_x_zero_counts","10"},
+    {"force_y_zero_counts","20"},{"force_z_zero_counts","30"},
+    {"conventions_confirmed","true"},{"force_frame","load_cell_link"},
     {"force_channel_mapping","x,y,z"}};
 }
-TEST(SiCalibration, AffineChannelsAndIndependentVelocity) {
-  const auto c = SiCalibration::load(installation(), 0, 0.5);
-  EXPECT_DOUBLE_EQ(c.position(110), 0.01);
-  EXPECT_DOUBLE_EQ(c.velocity(10), 0.2); // deliberately NOT s*raw velocity
-  EXPECT_DOUBLE_EQ(c.force(0,12), 4);
-  EXPECT_DOUBLE_EQ(c.force(1,22), -6);
-  EXPECT_DOUBLE_EQ(c.force(2,32), 8);
+TEST(SiCalibration, AffineChannelsIndependentVelocityAndOptionalOffsets) {
+  auto c=SiCalibration::load(installation());
+  EXPECT_FALSE(c.to_counts(0,c.reference_counts));
+  EXPECT_TRUE(std::isnan(c.position(110)));
+  ASSERT_TRUE(c.set_reference(100));
+  EXPECT_FALSE(c.set_reference(101));
+  EXPECT_DOUBLE_EQ(c.position(110),.01);
+  EXPECT_DOUBLE_EQ(c.velocity(10),.2);
+  EXPECT_DOUBLE_EQ(c.force(0,12),4);
+  EXPECT_DOUBLE_EQ(c.force(1,22),-6);
+  EXPECT_DOUBLE_EQ(c.force(2,32),8);
+  auto params=installation();
+  params.erase("force_x_zero_counts");
+  EXPECT_DOUBLE_EQ(SiCalibration::load(params).force(0,12),24);
 }
-TEST(SiCalibration, RoundingNegativeScaleAndTravel) {
-  for (const char *scale : {"0.001","-0.001"}) {
-    auto params = installation();
-    params["metres_per_count"] = scale;
-    auto c = SiCalibration::load(params, 0, 0.5);
-    std::int32_t raw = 0;
-    ASSERT_TRUE(c.to_counts(0.0106, raw));
-    EXPECT_EQ(raw, scale[0] == '-' ? 89 : 111);
-    EXPECT_NEAR(c.position(raw), 0.011, 1e-15);
-    EXPECT_FALSE(c.to_counts(-0.0001, raw));
-    EXPECT_FALSE(c.to_counts(0.5001, raw));
-    EXPECT_FALSE(c.to_counts(NAN, raw));
-    EXPECT_FALSE(c.to_counts(INFINITY, raw));
+TEST(SiCalibration, RoundingBothSignsGeneralBoundsAndOverflow) {
+  for (const auto *scale:{"0.001","-0.001"}) {
+    auto params=installation(); params["m_per_count"]=scale;
+    params["soft_bounds_enabled"]="true";
+    params["soft_lower_m"]="-0.5"; params["soft_upper_m"]="0.5";
+    auto c=SiCalibration::load(params); ASSERT_TRUE(c.set_reference(0));
+    std::int32_t raw=0;
+    ASSERT_TRUE(c.to_counts(.0005,raw));
+    EXPECT_EQ(raw,scale[0]=='-' ? -1 : 1);
+    ASSERT_TRUE(c.to_counts(-.0106,raw));
+    EXPECT_EQ(raw,scale[0]=='-' ? 11 : -11);
+    EXPECT_FALSE(c.to_counts(.5001,raw));
+    EXPECT_FALSE(c.to_counts(-.5001,raw));
+    EXPECT_FALSE(c.to_counts(NAN,raw));
+    c.upper=.0108;
+    EXPECT_FALSE(c.to_counts(.0107,raw));
   }
-  auto c = SiCalibration::load(installation(), 0, 0.5);
-  c.upper = 0.0108; // rounding to .011 exceeds travel even though request is in range
-  std::int32_t raw;
-  EXPECT_FALSE(c.to_counts(0.0107, raw));
-  c = SiCalibration::load(installation(), 0, 0.5);
-  c.encoder_zero_counts = 0;
-  EXPECT_TRUE(c.to_counts(.0005, raw));
-  EXPECT_EQ(raw, 1);
-  c.metres_per_count = -.001;
-  EXPECT_TRUE(c.to_counts(.0005, raw));
-  EXPECT_EQ(raw, -1); // std::round ties away from zero, including negative raw
+  auto c=SiCalibration::load(installation()); std::int32_t raw=7;
+  ASSERT_TRUE(c.set_reference(std::numeric_limits<std::int32_t>::max()));
+  EXPECT_TRUE(c.to_counts(0,raw));
+  EXPECT_FALSE(c.to_counts(.0001,raw));
+  c.clear_reference();
+  ASSERT_TRUE(c.set_reference(std::numeric_limits<std::int32_t>::min()));
+  c.m_per_count=-.001;
+  EXPECT_FALSE(c.to_counts(.0001,raw));
+  c.m_per_count=std::numeric_limits<double>::denorm_min();
+  EXPECT_FALSE(c.to_counts(.5,raw));
 }
-TEST(SiCalibration, Int32RangeBeforeConversion) {
-  auto c = SiCalibration::load(installation(), 0, 0.5);
-  c.encoder_zero_counts = std::numeric_limits<std::int32_t>::max();
-  std::int32_t raw = 7;
-  EXPECT_TRUE(c.to_counts(0, raw));
-  EXPECT_EQ(raw, std::numeric_limits<std::int32_t>::max());
-  EXPECT_FALSE(c.to_counts(0.0001, raw));
-  c.encoder_zero_counts = std::numeric_limits<std::int32_t>::min();
-  c.metres_per_count = -0.001;
-  EXPECT_TRUE(c.to_counts(0, raw));
-  EXPECT_FALSE(c.to_counts(0.0001, raw));
-  c.metres_per_count = std::numeric_limits<double>::denorm_min();
-  EXPECT_FALSE(c.to_counts(0.5, raw));
-}
-TEST(SiCalibration, PreciseInvalidInstallationAndConventions) {
-  auto params = installation();
-  for (const auto &key : {"metres_per_count","encoder_zero_counts",
-      "velocity_mps_per_raw_unit","force_x_newtons_per_count",
-      "force_y_newtons_per_count","force_z_newtons_per_count",
-      "force_x_zero_counts","force_y_zero_counts","force_z_zero_counts"}) {
-    for (const auto &bad : {"nan","inf","nope"}) {
-      auto invalid = params;
-      invalid[key] = bad;
-      try { SiCalibration::load(invalid, 0, 0.5); FAIL() << key; }
-      catch (const std::runtime_error &e) {
-        EXPECT_NE(std::string(e.what()).find(key), std::string::npos);
-      }
+TEST(SiCalibration, InvalidRequiredCalibrationAndUnconfirmedSigns) {
+  const auto good=installation();
+  for (const auto *key:{"m_per_count","velocity_mps_per_raw_unit",
+      "force_x_newtons_per_count","force_y_newtons_per_count","force_z_newtons_per_count"}) {
+    for (const auto *bad:{"nan","inf","0","nope"}) {
+      auto p=good; p[key]=bad;
+      EXPECT_THROW(SiCalibration::load(p),std::runtime_error);
     }
-    auto missing = params;
-    missing.erase(key);
-    EXPECT_THROW(SiCalibration::load(missing, 0, 0.5), std::runtime_error);
+    auto p=good; p.erase(key);
+    EXPECT_THROW(SiCalibration::load(p),std::runtime_error);
   }
-  params["conventions_confirmed"] = "false";
-  EXPECT_THROW(SiCalibration::load(params, 0, 0.5), std::runtime_error);
-  params = installation();
-  params["metres_per_count"] = "0";
-  EXPECT_THROW(SiCalibration::load(params, 0, 0.5), std::runtime_error);
-  params = installation();
-  params["force_channel_mapping"] = "y,x,z";
-  EXPECT_THROW(SiCalibration::load(params, 0, 0.5), std::runtime_error);
+  auto p=good; p["conventions_confirmed"]="false";
+  EXPECT_THROW(SiCalibration::load(p),std::runtime_error);
+  p=good; p["velocity_from_encoder"]="true"; p.erase("velocity_mps_per_raw_unit");
+  EXPECT_NO_THROW(SiCalibration::load(p));
+  p["soft_bounds_enabled"]="true"; p["soft_lower_m"]="1"; p["soft_upper_m"]="-1";
+  EXPECT_THROW(SiCalibration::load(p),std::runtime_error);
+}
+TEST(EncoderSession, StationaryCaptureMeasuredElapsedFreezeAndResetDetection) {
+  EncoderSession s;
+  EXPECT_TRUE(s.observe(100,1000000,true,2e-7,1000));
+  EXPECT_FALSE(s.valid());
+  EXPECT_TRUE(s.observe(100,2000000,true,2e-7,1000));
+  ASSERT_TRUE(s.valid()); EXPECT_EQ(s.reference(),100);
+  // 10 counts / 2 ms = .001 m/s. No PDO-unit or nominal-rate assumption.
+  EXPECT_TRUE(s.observe(110,4000000,false,2e-7,1000));
+  EXPECT_NEAR(s.velocity(),.001,1e-15);
+  EXPECT_EQ(s.reference(),100);
+  s.suspend();
+  EXPECT_TRUE(s.observe(110,10000000,true,2e-7,1000));
+  EXPECT_EQ(s.reference(),100);
+  EXPECT_FALSE(s.observe(-5000,11000000,true,2e-7,1000));
+  EXPECT_EQ(s.reference(),100);
+  s.end(); EXPECT_FALSE(s.valid());
+  ASSERT_TRUE(s.observe(-5000,12000000,true,-2e-7,1000));
+  ASSERT_TRUE(s.observe(-5000,13000000,true,-2e-7,1000));
+  EXPECT_EQ(s.reference(),-5000);
+  ASSERT_TRUE(s.observe(-5010,15000000,false,-2e-7,1000));
+  EXPECT_NEAR(s.velocity(),.001,1e-15);
 }

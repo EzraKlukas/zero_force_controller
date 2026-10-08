@@ -38,14 +38,14 @@ TEST(ControlResources, NativeRosYamlAndForceOnlyBroadcaster) {
   const auto parameters = rclcpp::parameter_map_from_yaml_file(directory + "controllers.yaml");
   for (const auto *file : {"hardware.yaml", "gazebo.yaml"})
     EXPECT_FALSE(rclcpp::parameter_map_from_yaml_file(directory + file).empty());
-  bool found_unset = false;
-  for (const auto &param : parameters.at("/zero_force_controller"))
+  bool found_speed = false;
+  for (const auto &param : parameters.at("/calibration_sequencer_controller"))
     if (param.get_name() == "base_velocity_mps") {
       ASSERT_EQ(param.get_type(), rclcpp::ParameterType::PARAMETER_DOUBLE);
-      EXPECT_TRUE(std::isnan(param.as_double()));
-      found_unset = true;
+      EXPECT_DOUBLE_EQ(param.as_double(),.1);
+      found_speed = true;
     }
-  EXPECT_TRUE(found_unset);
+  EXPECT_TRUE(found_speed);
   rclcpp::init(0, nullptr);
   {
     pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(

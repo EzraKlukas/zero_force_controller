@@ -18,6 +18,13 @@ if(BUILD_TESTING)
   ament_add_gtest(control_resources_test test/control_resources_test.cpp)
   ament_target_dependencies(control_resources_test hardware_interface rclcpp controller_interface pluginlib)
   target_compile_definitions(control_resources_test PRIVATE ZFC_BRINGUP_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}")
+  find_package(zfc_interfaces REQUIRED)
+  ament_add_gtest(controller_handoff_test test/controller_handoff_test.cpp)
+  ament_target_dependencies(controller_handoff_test hardware_interface rclcpp controller_interface pluginlib zfc_interfaces)
+  ament_add_gtest(logic_allocation_test test/logic_allocation_test.cpp)
+  target_include_directories(logic_allocation_test PRIVATE
+    ../zfc_zero_force_controller/include ../zfc_calibration_controller/include
+    ../zfc_interfaces/include)
   option(ZFC_HARDWARE_TESTS "Build fake-IgH protection regressions (requires real IgH SDK)" OFF)
   if(ZFC_HARDWARE_TESTS)
     find_package(zfc_ethercat_core REQUIRED)

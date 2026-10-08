@@ -6,6 +6,7 @@
 #include "hardware_interface/system_interface.hpp"
 #include "pluginlib/class_loader.hpp"
 #include <chrono>
+#include <algorithm>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <sstream>
@@ -52,7 +53,7 @@ hardware_interface::HardwareInfo TestInfo() {
       hardware_interface::parse_control_resources_from_urdf(xml.str()).at(0);
   info.hardware_parameters["startup_timeout_seconds"] = "0.02";
   const std::pair<const char *, const char *> calibration[] = {
-    {"metres_per_count","0.000001"}, {"encoder_zero_counts","0"},
+    {"m_per_count","0.000001"}, {"velocity_from_encoder","true"},
     {"velocity_mps_per_raw_unit","0.002"},
     {"force_x_newtons_per_count","1"}, {"force_y_newtons_per_count","1"},
     {"force_z_newtons_per_count","1"}, {"force_x_zero_counts","0"},
@@ -89,7 +90,7 @@ protected:
       ASSERT_EQ(hw->write(time, period), Result::OK);
     }
     ASSERT_TRUE(std::isfinite(state("carriage/position")));
-    ASSERT_DOUBLE_EQ(commands[0].get_value(), 123e-6);
+    ASSERT_DOUBLE_EQ(commands[0].get_value(), 0.0);
     ASSERT_EQ(hw->perform_command_mode_switch(
                   {"carriage/position"}, {}),
               Result::OK);
@@ -103,7 +104,7 @@ protected:
   Result cycle(double target) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     EXPECT_EQ(hw->read(time, period), Result::OK);
-    commands[0].set_value(target * 1e-6);
+    commands[0].set_value((target - 123) * 1e-6);
     return hw->write(time, period);
   }
   void finish_fault() {
@@ -127,9 +128,10 @@ TEST_F(HardwareTest, CycleOrderAndSingleOwnership) {
   EXPECT_EQ(fake_igh::target(), 133);
   EXPECT_EQ(cycle(143), Result::OK);
   EXPECT_EQ(fake_igh::target(), 143);
-  // Startup takes four exchanges, so reference sync falls on this first
-  // read/write.
-  EXPECT_EQ(fake_igh::order, "ARPFSQTARPSQT");
+  // Reference sync is periodic; session startup adds a stationary sample.
+  auto order = fake_igh::order;
+  order.erase(std::remove(order.begin(), order.end(), 'F'), order.end());
+  EXPECT_EQ(order, "ARPSQTARPSQT");
   EXPECT_EQ(fake_igh::sends, sends + 2);
   EXPECT_EQ(fake_igh::requests, 1U);
   EXPECT_EQ(hw->perform_command_mode_switch(
@@ -137,7 +139,7 @@ TEST_F(HardwareTest, CycleOrderAndSingleOwnership) {
             Result::OK);
   const auto held = state("carriage/position");
   EXPECT_EQ(cycle(999999), Result::OK);
-  EXPECT_EQ(fake_igh::target(), std::lround(held / 1e-6));
+  EXPECT_EQ(fake_igh::target(), 123 + std::lround(held / 1e-6));
   EXPECT_EQ(hw->on_deactivate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
   EXPECT_EQ(fake_igh::controlword(), 0);
   EXPECT_EQ(hw->on_cleanup(rclcpp_lifecycle::State{}), Callback::SUCCESS);
@@ -243,6 +245,9 @@ TEST_F(HardwareTest, ActivationIsPromptAndStartupIsIncremental) {
     EXPECT_EQ(fake_igh::sends, i + 1);
   }
   EXPECT_EQ(cycle(99999), Result::OK);
+  EXPECT_TRUE(std::isnan(state("carriage/position"))); // First ready sample only.
+  EXPECT_EQ(hw->prepare_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
+  EXPECT_EQ(cycle(99999), Result::OK);
   ASSERT_TRUE(std::isfinite(state("carriage/position")));
   EXPECT_EQ(fake_igh::target(), 123);
 }
@@ -308,7 +313,7 @@ TEST_F(HardwareTest, QuietDiagnosticsRetainsFaultAndStatusContract) {
 
 TEST_F(HardwareTest, MissingCalibrationBlocksBeforeMasterRequest) {
   auto info = TestInfo();
-  info.hardware_parameters.erase("velocity_mps_per_raw_unit");
+  info.hardware_parameters.erase("m_per_count");
   ASSERT_EQ(hw->on_init(info), Callback::SUCCESS);
   EXPECT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::FAILURE);
   EXPECT_EQ(fake_igh::requests, 0U);
@@ -334,8 +339,7 @@ TEST_F(HardwareTest, FaultRejectsNewClaimsAndAllThreeForcesBecomeNaN) {
 }
 TEST_F(HardwareTest, NegativeScaleKeepsRawSwitchDirectionAndFollowingError) {
   auto info = TestInfo();
-  info.hardware_parameters["metres_per_count"] = "-0.000001";
-  info.hardware_parameters["encoder_zero_counts"] = "500000";
+  info.hardware_parameters["m_per_count"] = "-0.000001";
   ASSERT_EQ(hw->on_init(info), Callback::SUCCESS);
   ASSERT_EQ(hw->on_configure(rclcpp_lifecycle::State{}), Callback::SUCCESS);
   ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}), Callback::SUCCESS);
@@ -345,14 +349,33 @@ TEST_F(HardwareTest, NegativeScaleKeepsRawSwitchDirectionAndFollowingError) {
     ASSERT_EQ(hw->write(time, period), Result::OK);
   }
   ASSERT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::OK);
-  EXPECT_NEAR(commands[0].get_value(), .499877, 1e-12);
+  EXPECT_NEAR(commands[0].get_value(), 0.0, 1e-12);
   // Positive raw switch forbids increasing counts: that is DOWN in SI.
   EC_WRITE_U32(fake_igh::data.data() + fake_igh::offsets[0x60FD], 2);
   std::this_thread::sleep_for(std::chrono::milliseconds(1));
   ASSERT_EQ(hw->read(time, period), Result::OK);
-  commands[0].set_value(.499867); // raw 133
+  commands[0].set_value(-10e-6); // raw 133
   EXPECT_EQ(hw->write(time, period), Result::OK);
   EXPECT_EQ(fake_igh::target(), 123);
   EXPECT_EQ(hw->perform_command_mode_switch({"carriage/position"}, {}), Result::ERROR);
   finish_fault();
+}
+
+TEST_F(HardwareTest, SessionReferenceSurvivesUnclaimAndHardwareReactivation) {
+  activate();
+  EXPECT_EQ(hw->on_init(TestInfo()),Callback::ERROR); // Never re-zero an open session.
+  ASSERT_EQ(cycle(133),Result::OK);
+  ASSERT_EQ(cycle(133),Result::OK);
+  EXPECT_NEAR(state("carriage/position"),10e-6,1e-12);
+  ASSERT_EQ(hw->perform_command_mode_switch({},{"carriage/position"}),Result::OK);
+  ASSERT_EQ(hw->on_deactivate(rclcpp_lifecycle::State{}),Callback::SUCCESS);
+  ASSERT_EQ(hw->on_activate(rclcpp_lifecycle::State{}),Callback::SUCCESS);
+  for (int i=0;i<10 && !std::isfinite(state("carriage/position"));++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_EQ(hw->read(time,period),Result::OK);
+    ASSERT_EQ(hw->write(time,period),Result::OK);
+  }
+  EXPECT_NEAR(state("carriage/position"),10e-6,1e-12);
+  EXPECT_NEAR(commands[0].get_value(),10e-6,1e-12);
+  ASSERT_EQ(hw->on_cleanup(rclcpp_lifecycle::State{}),Callback::SUCCESS);
 }

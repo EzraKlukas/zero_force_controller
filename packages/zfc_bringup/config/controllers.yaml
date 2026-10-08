@@ -1,5 +1,5 @@
-# Shared SI controller schema. Motion values await installation measurements.
-# Shared by EtherCAT and future Gazebo bringup. No backend settings here.
+# Shared controller types/settings. Both motion plugins own the SAME command;
+# configure both, activate at most one. Numeric defaults are simulation tuning.
 controller_manager:
   ros__parameters:
     update_rate: 1000
@@ -9,16 +9,16 @@ controller_manager:
       type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
     zero_force_controller:
       type: zfc_zero_force_controller/ZeroForceController
+    calibration_sequencer_controller:
+      type: zfc_calibration_controller/CalibrationSequencerController
 
 joint_state_broadcaster:
   ros__parameters:
     joints: [carriage]
     interfaces: [position, velocity]
-
 load_cell_broadcaster:
   ros__parameters:
     frame_id: load_cell_link
-    # A force-only sensor: do not use sensor_name, which requests all 6 axes.
     interface_names:
       force:
         x: load_cell/force.x
@@ -29,18 +29,45 @@ zero_force_controller:
   ros__parameters:
     joint_name: carriage
     force_interface: load_cell/force.x
-    do_calibrate: false
-    # Unset pending measured scale s = abs(metres_per_count).
-    # Preserve today's sequence at dt = 0.001 s:
-    # width=1000*s; speed=500*s/dt; jerk=5*s/dt^3;
-    # initial acceleration=increment=s/dt^2; max acceleration=10*s/dt^2.
-    # Set base_velocity_mps sign to encoder polarity to retain the old
-    # positive-count first leg; a positive SI value starts upward.
-    # Hold-only mode should not require unused trajectory parameters.
-    center_zone_half_width_m: .nan
-    base_velocity_mps: .nan
-    jerk_mps3: .nan
-    initial_acceleration_mps2: .nan
-    acceleration_increment_mps2: .nan
-    max_acceleration_mps2: .nan
+    trial_id: 0
+    hold_only: false
+    baseline_duration_s: 1.0
+    noise_duration_s: 1.0
+    acceleration_per_force: 0.1
+    force_response_sign: -1
+    damping_per_s: 5.0
+    # Explicitly uncompensated simulation default; hardware requires SI tuning.
+    inertial_force_coefficient_kg: 0.0
+    noise_multiplier: 3.0
+    minimum_deadband_n: 0.05
+    max_acceleration_mps2: 0.5
+    max_velocity_mps: 0.02
+    excursion_limit_m: 0.06
+    use_position_bounds: false
+    lower_position_m: 0.0
+    upper_position_m: 0.5
+    stationary_velocity_mps: 0.001
+    max_force_n: 1000.0
+
+calibration_sequencer_controller:
+  ros__parameters:
+    joint_name: carriage
+    force_interface: load_cell/force.x
+    trial_id: 0
+    # Approximate conversion with |m_per_count|=2e-7 and dt=.001.
+    center_zone_half_width_m: 0.0002
+    base_velocity_mps: 0.1
+    jerk_mps3: 1000.0
+    initial_acceleration_mps2: 0.2
+    acceleration_increment_mps2: 0.2
+    max_acceleration_mps2: 2.0
     cycles_per_acceleration_increase: 5
+    excursion_limit_m: 0.06
+    use_position_bounds: false
+    lower_position_m: 0.0
+    upper_position_m: 0.5
+    settling_acceleration_mps2: 0.2
+    settling_timeout_s: 5.0
+    stationary_velocity_mps: 0.001
+    tracking_tolerance_m: 0.0001
+    stationary_duration_s: 0.1

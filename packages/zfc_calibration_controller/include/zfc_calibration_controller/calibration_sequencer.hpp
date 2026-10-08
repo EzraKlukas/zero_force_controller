@@ -3,16 +3,15 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-namespace zfc_zero_force_controller {
+namespace zfc_calibration_controller {
 struct CalibrationParameters {
-  bool do_calibrate = false;
-  double center_zone_half_width_m = NAN;
+  double center_zone_half_width_m = 0.0002;
   // Signed SI velocity permits preserving the original first-leg direction.
-  double base_velocity_mps = NAN;
-  double jerk_mps3 = NAN;
-  double initial_acceleration_mps2 = NAN;
-  double acceleration_increment_mps2 = NAN;
-  double max_acceleration_mps2 = NAN;
+  double base_velocity_mps = 0.1;
+  double jerk_mps3 = 1000;
+  double initial_acceleration_mps2 = 0.2;
+  double acceleration_increment_mps2 = 0.2;
+  double max_acceleration_mps2 = 2.0;
   std::int64_t cycles_per_acceleration_increase = 5;
 };
 
@@ -21,8 +20,6 @@ class CalibrationSequencer {
 public:
   static constexpr double dt = 0.001;
   static bool valid(const CalibrationParameters &p) noexcept {
-    if (!p.do_calibrate)
-      return true;
     return std::isfinite(p.center_zone_half_width_m) &&
            p.center_zone_half_width_m > 0 &&
            std::isfinite(p.base_velocity_mps) && p.base_velocity_mps != 0 &&
@@ -67,7 +64,7 @@ public:
       ++excessive_periods_;
     if (period_ns > 10000000)
       return false;
-    if (finished_ || !p_.do_calibrate)
+    if (finished_)
       return true;
 
     const double displacement = displacement_;
@@ -114,6 +111,11 @@ public:
   double target() const noexcept { return commanded_position_; }
   std::uint64_t excessive_periods() const noexcept { return excessive_periods_; }
   bool finished_calibration() const noexcept { return finished_; }
+  double progress() const noexcept {
+    if (finished_) return 1;
+    const double range=p_.max_acceleration_mps2-p_.initial_acceleration_mps2;
+    return range>0 ? std::clamp((acceleration_limit_-p_.initial_acceleration_mps2)/range,0.0,1.0) : 0;
+  }
 private:
   // Compensated sums keep SI roundoff from moving exact legacy center crossings.
   static void accumulate(double &sum, double &error, double step) noexcept {
@@ -131,4 +133,4 @@ private:
   bool positive_center_pass_counted_ = true;
   std::uint64_t excessive_periods_ = 0;
 };
-} // namespace zfc_zero_force_controller
+} // namespace zfc_calibration_controller

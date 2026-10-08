@@ -42,7 +42,7 @@ private:
   std::array<double, 25> state_{};
   std::array<double, 5> si_state_{};
   SiCalibration calibration_;
-  double lower_ = NAN, upper_ = NAN;
+  EncoderSession session_;
   double command_ = NAN, startup_timeout_ = 20;
   std::int32_t previous_ = 0;
   bool active_ = false, claimed_ = false, fault_ = false, stop_complete_ = true;

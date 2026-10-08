@@ -1,4 +1,4 @@
 # Loaded after shared controllers.yaml and hardware.yaml.
 zero_force_controller:
   ros__parameters:
-    do_calibrate: false
+    hold_only: true

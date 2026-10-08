@@ -39,6 +39,7 @@ def test_model(backend):
     if backend == "gazebo":
         assert plugin == "gz_ros2_control/GazeboSimSystem"
         assert system.findall("hardware/param") == []
+        assert [float(p.text) for p in system.findall("joint/command_interface/param")] == [0, 0.5]
         sensor = robot.find("gazebo[@reference='load_cell_joint']")
         assert sensor.find("preserveFixedJoint").text == "true"
         assert sensor.find("sensor/force_torque/frame").text == "child"
@@ -49,6 +50,11 @@ def test_model(backend):
     else:
         assert plugin == "zfc_ethercat_hardware/EthercatHardware"
         assert robot.findall("gazebo") == []
+        assert system.findall("joint/command_interface/param") == []
+        hardware = {p.attrib["name"]: p.text for p in system.findall("hardware/param")}
+        assert hardware["m_per_count"] == "2e-07"
+        assert hardware["velocity_from_encoder"] == "true"
+        assert "encoder_zero_counts" not in hardware
 
 
 def test_invalid_backend_rejected():
@@ -69,15 +75,39 @@ def test_configuration():
     assert hw["hardware_components_initial_state"] == {"unconfigured": ["StageSystem"]}
     assert "hardware_components_initial_state" not in configs["gazebo"]["controller_manager"]["ros__parameters"]
     params = shared["zero_force_controller"]["ros__parameters"]
-    assert params["do_calibrate"] is False
-    for key in ("center_zone_half_width_m", "base_velocity_mps", "jerk_mps3",
-                "initial_acceleration_mps2", "acceleration_increment_mps2",
-                "max_acceleration_mps2"):
-        assert math.isnan(params[key])
+    assert "do_calibrate" not in params
+    assert params["inertial_force_coefficient_kg"] == 0
+    calibration = shared["calibration_sequencer_controller"]["ros__parameters"]
+    assert calibration["center_zone_half_width_m"] == 0.0002
+    assert calibration["base_velocity_mps"] == 0.1
+    assert calibration["jerk_mps3"] == 1000.0
+    assert calibration["initial_acceleration_mps2"] == 0.2
+    assert calibration["acceleration_increment_mps2"] == 0.2
+    assert calibration["max_acceleration_mps2"] == 2.0
+    installation = configs["hardware_calibration"]
+    assert installation["m_per_count"] == 2e-7
+    assert installation["conventions_confirmed"] is False
+    assert installation["soft_bounds_enabled"] is False
+    assert "encoder_zero_counts" not in installation
     force = shared["load_cell_broadcaster"]["ros__parameters"]
     assert "sensor_name" not in force
     assert force["interface_names"] == {"force": {
         "x": "load_cell/force.x", "y": "load_cell/force.y", "z": "load_cell/force.z"}}
+
+
+def test_optional_velocity_offsets_and_invalid_installation_boolean(tmp_path):
+    calibration = yaml.safe_load((ROOT / "config/hardware_calibration.yaml").read_text())
+    calibration.pop("velocity_mps_per_raw_unit")
+    path = tmp_path / "installation.yaml"
+    path.write_text(yaml.safe_dump(calibration))
+    robot = ET.fromstring(xacro.process_file(str(ROOT / "urdf/stage.urdf.xacro"),
+        mappings={"hardware_calibration_file": str(path)}).toxml())
+    assert robot.find("ros2_control/hardware/param[@name='force_x_zero_counts']").text == "0.0"
+    calibration["soft_bounds_enabled"] = "typo"
+    path.write_text(yaml.safe_dump(calibration))
+    with pytest.raises(xacro.XacroException):
+        xacro.process_file(str(ROOT / "urdf/stage.urdf.xacro"),
+            mappings={"hardware_calibration_file": str(path)})
 
 
 def test_launch_gazebo_and_invalid_backend_exit_before_nodes():

@@ -1,0 +1,5 @@
+<library path="zfc_calibration_controller">
+  <class name="zfc_calibration_controller/CalibrationSequencerController" type="zfc_calibration_controller::CalibrationSequencerController" base_class_type="controller_interface::ControllerInterface">
+    <description>SI calibration trajectory, settling and trial telemetry.</description>
+  </class>
+</library>

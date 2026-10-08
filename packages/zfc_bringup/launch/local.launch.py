@@ -29,7 +29,8 @@ def build_physical_nodes(backend, controllers_file, hardware_file, calibration_f
              remappings=[("~/robot_description", "/robot_description")]),
     ]
     # Broadcasters, like motion, require explicit activation after valid data.
-    for name in ("zero_force_controller", "joint_state_broadcaster", "load_cell_broadcaster"):
+    for name in ("zero_force_controller", "calibration_sequencer_controller",
+                 "joint_state_broadcaster", "load_cell_broadcaster"):
         nodes.append(Node(package="controller_manager", executable="spawner",
             arguments=[name, "--inactive", "--controller-manager", "/controller_manager",
                        "--controller-manager-timeout", "60"], output="screen"))

@@ -1,0 +1,125 @@
+zfc_calibration_controller:
+  joint_name:
+    type: string
+    default_value: "carriage"
+    description: "Joint resource; structural, fixed at initialization."
+    read_only: true
+  force_interface:
+    type: string
+    default_value: "load_cell/force.x"
+    description: "Force state resource/interface in N; structural, fixed at initialization."
+    read_only: true
+  trial_id:
+    type: int
+    default_value: 0
+    description: "0 assigns a monotonic ID per controller lifetime; nonzero ID assigned manually while inactive."
+    validation:
+      bounds<>: [0, 9223372036854775807]
+  excursion_limit_m:
+    type: double
+    default_value: 0.06
+    description: "Maximum measured and commanded excursion from activation position (m); operator must verify clearance."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 1]
+  use_position_bounds:
+    type: bool
+    default_value: false
+    description: "Enable independently reviewed absolute/session-coordinate bounds."
+  lower_position_m:
+    type: double
+    default_value: 0.0
+    description: "Lower position bound (m), only used when enabled."
+    validation:
+      finite_si: []
+      bounds<>: [-1000, 1000]
+  upper_position_m:
+    type: double
+    default_value: 0.5
+    description: "Upper position bound (m), only used when enabled."
+    validation:
+      finite_si: []
+      bounds<>: [-1000, 1000]
+  stationary_velocity_mps:
+    type: double
+    default_value: 0.001
+    description: "Stationary measured velocity tolerance (m/s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 0.1]
+  center_zone_half_width_m:
+    type: double
+    default_value: 0.0002
+    description: "Center-zone half-width (m), approximate 1000*2e-7."
+    validation:
+      finite_si: []
+      bounds<>: [0.000000001, 0.1]
+  base_velocity_mps:
+    type: double
+    default_value: 0.1
+    description: "Signed starting speed (m/s); positive starts upward."
+    validation:
+      finite_si: []
+      bounds<>: [-1, 1]
+  jerk_mps3:
+    type: double
+    default_value: 1000.0
+    description: "Nominal recurrence jerk magnitude (m/s^3)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 1000000]
+  initial_acceleration_mps2:
+    type: double
+    default_value: 0.2
+    description: "Initial recurrence acceleration magnitude (m/s^2)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 100]
+  acceleration_increment_mps2:
+    type: double
+    default_value: 0.2
+    description: "Acceleration-limit increment per group of cycles (m/s^2)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 100]
+  max_acceleration_mps2:
+    type: double
+    default_value: 2.0
+    description: "Final recurrence acceleration limit (m/s^2); center clipping telemetry is effective acceleration."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 100]
+  cycles_per_acceleration_increase:
+    type: int
+    default_value: 5
+    description: "Positive-SI-direction center crossings per acceleration increase."
+    validation:
+      bounds<>: [1, 1000]
+  settling_acceleration_mps2:
+    type: double
+    default_value: 0.2
+    description: "Reference deceleration to stationary hold (m/s^2)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 100]
+  settling_timeout_s:
+    type: double
+    default_value: 5.0
+    description: "Maximum settling duration before NaN stop (s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.001, 60]
+  tracking_tolerance_m:
+    type: double
+    default_value: 0.0001
+    description: "Measured-to-reference tolerance for stationary completion (m)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 0.01]
+  stationary_duration_s:
+    type: double
+    default_value: 0.1
+    description: "Consecutive stationary hold duration required for completion (s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.001, 10]

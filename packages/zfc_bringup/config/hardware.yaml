@@ -8,6 +8,11 @@ controller_manager:
 zero_force_controller:
   ros__parameters:
     use_sim_time: false
+    use_position_bounds: false
+calibration_sequencer_controller:
+  ros__parameters:
+    use_sim_time: false
+    use_position_bounds: false
 joint_state_broadcaster:
   ros__parameters:
     use_sim_time: false

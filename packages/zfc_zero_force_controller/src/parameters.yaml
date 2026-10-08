@@ -1,0 +1,129 @@
+zfc_zero_force_controller:
+  joint_name:
+    type: string
+    default_value: "carriage"
+    description: "Joint resource; structural, fixed at initialization."
+    read_only: true
+  force_interface:
+    type: string
+    default_value: "load_cell/force.x"
+    description: "Force state resource/interface in N; structural, fixed at initialization."
+    read_only: true
+  trial_id:
+    type: int
+    default_value: 0
+    description: "0 assigns a monotonic ID per controller lifetime; nonzero ID assigned manually while inactive."
+    validation:
+      bounds<>: [0, 9223372036854775807]
+  excursion_limit_m:
+    type: double
+    default_value: 0.06
+    description: "Maximum measured and commanded excursion from activation position (m); operator must verify clearance."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 1]
+  use_position_bounds:
+    type: bool
+    default_value: false
+    description: "Enable independently reviewed absolute/session-coordinate bounds."
+  lower_position_m:
+    type: double
+    default_value: 0.0
+    description: "Lower position bound (m), only used when enabled."
+    validation:
+      finite_si: []
+      bounds<>: [-1000, 1000]
+  upper_position_m:
+    type: double
+    default_value: 0.5
+    description: "Upper position bound (m), only used when enabled."
+    validation:
+      finite_si: []
+      bounds<>: [-1000, 1000]
+  stationary_velocity_mps:
+    type: double
+    default_value: 0.001
+    description: "Stationary measured velocity tolerance (m/s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 0.1]
+  hold_only:
+    type: bool
+    default_value: false
+    description: "Hold measured position; profiling/check mode."
+  baseline_duration_s:
+    type: double
+    default_value: 1.0
+    description: "Stationary trial baseline window at nominal 1 kHz (s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.001, 60]
+  noise_duration_s:
+    type: double
+    default_value: 1.0
+    description: "Stationary RMS window about frozen baseline (s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.001, 60]
+  acceleration_per_force:
+    type: double
+    default_value: 0.1
+    description: "Empirical SI gain (m/s^2)/N; simulation default requires hardware tuning."
+    validation:
+      finite_si: []
+      bounds<>: [0, 100]
+  force_response_sign:
+    type: int
+    default_value: -1
+    description: "Support-force convention: -1 means negative residual commands upward acceleration."
+    validation:
+      bounds<>: [-1, 1]
+  damping_per_s:
+    type: double
+    default_value: 5.0
+    description: "Exponential velocity damping rate (1/s)."
+    validation:
+      finite_si: []
+      bounds<>: [0, 1000]
+  inertial_force_coefficient_kg:
+    type: double
+    default_value: 0.0
+    description: "Signed support-force inertial compensation mass (kg); zero is explicitly uncompensated simulation mode."
+    validation:
+      finite_si: []
+      bounds<>: [-1000, 1000]
+  noise_multiplier:
+    type: double
+    default_value: 3.0
+    description: "RMS deadband multiplier (dimensionless)."
+    validation:
+      finite_si: []
+      bounds<>: [0, 20]
+  minimum_deadband_n:
+    type: double
+    default_value: 0.05
+    description: "Minimum residual-force deadband (N)."
+    validation:
+      finite_si: []
+      bounds<>: [0, 1000]
+  max_acceleration_mps2:
+    type: double
+    default_value: 0.5
+    description: "Maximum effective command acceleration including damping (m/s^2)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 100]
+  max_velocity_mps:
+    type: double
+    default_value: 0.02
+    description: "Maximum reference velocity magnitude (m/s)."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 1]
+  max_force_n:
+    type: double
+    default_value: 1000.0
+    description: "Finite input force magnitude bound (N); out-of-range feedback stops."
+    validation:
+      finite_si: []
+      bounds<>: [0.000001, 1000000]

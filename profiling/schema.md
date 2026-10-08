@@ -111,10 +111,12 @@ there is no consumer before all producers stop. No idle interval is called
 framework overhead.
 
 Hardware adapter read/write remainder is body minus corresponding core body.
-Controller wrapper remainder is body minus ramp calculation.
+Controller wrapper remainder is body minus logic calculation (the existing
+calculation boundary names are unchanged for zero-force and calibration logic).
 These are nested partitions; they must not be stacked again alongside parent
 hardware/controller bodies. The current controller remainder combines state
-handle access, command handle writes and validation. It does not yet split
+handle access, command handle writes and bounded telemetry capture. Logic
+validation is included in the calculation scope. It does not yet split
 those individual operations. Likewise adapter validation/safety is currently
 a remainder, not a separately clocked inner scope.
 

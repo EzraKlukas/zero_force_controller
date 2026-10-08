@@ -1,33 +1,32 @@
-#include "zfc_zero_force_controller/zero_force_controller.hpp"
+#include "zfc_calibration_controller/calibration_sequencer_controller.hpp"
 #include "cycle_timing.hpp"
 #include "pluginlib/class_list_macros.hpp"
-namespace zfc_zero_force_controller {
+namespace zfc_calibration_controller {
 using Callback=controller_interface::CallbackReturn;
 using Result=controller_interface::return_type;
 namespace {
-ZeroForceSettings settings(const Params &q) {
-  ZeroForceSettings p;
+CalibrationSettings settings(const Params &q) {
+  CalibrationSettings p;
   p.bounds={q.excursion_limit_m,q.use_position_bounds,q.lower_position_m,q.upper_position_m};
   p.stationary_velocity_mps=q.stationary_velocity_mps;
 
-  p.hold_only=q.hold_only;
-  p.baseline_duration_s=q.baseline_duration_s; p.noise_duration_s=q.noise_duration_s;
-  p.acceleration_per_force=q.acceleration_per_force; p.force_response_sign=q.force_response_sign;
-  p.damping_per_s=q.damping_per_s; p.inertial_force_coefficient_kg=q.inertial_force_coefficient_kg;
-  p.noise_multiplier=q.noise_multiplier; p.minimum_deadband_n=q.minimum_deadband_n;
-  p.max_acceleration_mps2=q.max_acceleration_mps2; p.max_velocity_mps=q.max_velocity_mps;
-  p.max_force_n=q.max_force_n;
+  p.trajectory={q.center_zone_half_width_m,q.base_velocity_mps,q.jerk_mps3,
+    q.initial_acceleration_mps2,q.acceleration_increment_mps2,
+    q.max_acceleration_mps2,q.cycles_per_acceleration_increase};
+  p.settling_acceleration_mps2=q.settling_acceleration_mps2;
+  p.settling_timeout_s=q.settling_timeout_s; p.tracking_tolerance_m=q.tracking_tolerance_m;
+  p.stationary_duration_s=q.stationary_duration_s;
   return p;
 }
 }
-controller_interface::InterfaceConfiguration ZeroForceController::command_interface_configuration() const {
+controller_interface::InterfaceConfiguration CalibrationSequencerController::command_interface_configuration() const {
   return {controller_interface::interface_configuration_type::INDIVIDUAL,{joint_name_+"/position"}};
 }
-controller_interface::InterfaceConfiguration ZeroForceController::state_interface_configuration() const {
+controller_interface::InterfaceConfiguration CalibrationSequencerController::state_interface_configuration() const {
   return {controller_interface::interface_configuration_type::INDIVIDUAL,
           {joint_name_+"/position",joint_name_+"/velocity",force_interface_}};
 }
-Callback ZeroForceController::on_init() {
+Callback CalibrationSequencerController::on_init() {
   try {
     listener_=std::make_shared<ParamListener>(get_node());
     const auto p=listener_->get_params();
@@ -50,7 +49,7 @@ Callback ZeroForceController::on_init() {
     return Callback::ERROR;
   }
 }
-Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
+Callback CalibrationSequencerController::on_configure(const rclcpp_lifecycle::State &) {
   try {
     if (!settings(listener_->get_params()).valid())
       throw std::runtime_error("Invalid finite SI settings, bounds or cross-parameter constraints");
@@ -60,7 +59,7 @@ Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
     return Callback::ERROR;
   }
 }
-Callback ZeroForceController::on_activate(const rclcpp_lifecycle::State &) {
+Callback CalibrationSequencerController::on_activate(const rclcpp_lifecycle::State &) {
   active_.store(true,std::memory_order_release);
   try {
     if (command_interfaces_.size()!=1 || state_interfaces_.size()!=3)
@@ -89,7 +88,7 @@ Callback ZeroForceController::on_activate(const rclcpp_lifecycle::State &) {
     return Callback::ERROR;
   }
 }
-Callback ZeroForceController::on_deactivate(const rclcpp_lifecycle::State &) {
+Callback CalibrationSequencerController::on_deactivate(const rclcpp_lifecycle::State &) {
   if (!command_interfaces_.empty() && !state_interfaces_.empty()) {
     const double actual=state_interfaces_[0].get_value();
     const bool finite=state_interfaces_.size()==3 && std::isfinite(actual) &&
@@ -101,7 +100,7 @@ Callback ZeroForceController::on_deactivate(const rclcpp_lifecycle::State &) {
   active_.store(false,std::memory_order_release);
   return Callback::SUCCESS;
 }
-Result ZeroForceController::update(const rclcpp::Time &time,const rclcpp::Duration &period) {
+Result CalibrationSequencerController::update(const rclcpp::Time &time,const rclcpp::Duration &period) {
   zfc::timing::Boundary probe(zfc::timing::controller_entry,zfc::timing::controller_exit);
   ZFC_VALUE(zfc::timing::controller_active,1);
   const zfc::Inputs in{state_interfaces_[0].get_value(),state_interfaces_[1].get_value(),
@@ -117,5 +116,5 @@ Result ZeroForceController::update(const rclcpp::Time &time,const rclcpp::Durati
     telemetry_->finish(state.phase==zfc::Phase::complete && state.valid);
   return state.valid ? Result::OK : Result::ERROR;
 }
-} // namespace zfc_zero_force_controller
-PLUGINLIB_EXPORT_CLASS(zfc_zero_force_controller::ZeroForceController,controller_interface::ControllerInterface)
+} // namespace zfc_calibration_controller
+PLUGINLIB_EXPORT_CLASS(zfc_calibration_controller::CalibrationSequencerController,controller_interface::ControllerInterface)

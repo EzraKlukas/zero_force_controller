@@ -1,7 +1,7 @@
 # Offline validation
 
 For the current SI checkout and no-IgH Distrobox commands, see
-[SI migration verification](si-refactor.md). The records below predate that
+[controller design and current verification](controller-design.md). The records below predate that
 interface; full builds require genuine IgH, and fake-IgH plugin tests now require
 `-DZFC_HARDWARE_TESTS=ON`.
 

@@ -60,7 +60,9 @@
     </visual>
   </link>
 
-  <!-- q=0: lower travel datum; +q: upward. q is metres, not motor radians. -->
+  <!-- Gazebo q=0 is the model lower datum. Hardware q=0 is a stationary
+       session reference: physical TF/mechanical offset remains unknown.
+       +q is upward once encoder polarity is verified. -->
   <joint name="carriage" type="prismatic">
     <parent link="base_link"/><child link="carriage_link"/>
     <origin xyz="0.09 0 0.20"/>
@@ -107,24 +109,31 @@
         <param name="startup_timeout_seconds">20</param>
         <param name="update_rate_hz">1000</param>
         <param name="diagnostic_mode">$(arg diagnostic_mode)</param>
-        <param name="conventions_confirmed">${'true' if cal['conventions_confirmed'] == True else 'false'}</param>
+        <param name="conventions_confirmed">${dict([(True, 'true'), (False, 'false')])[cal['conventions_confirmed']]}</param>
         <param name="force_frame">${cal['force_frame']}</param>
         <param name="force_channel_mapping">${cal['force_channel_mapping']}</param>
         <!-- Installation calibration; NaN must block hardware configuration. -->
-        <param name="metres_per_count">${cal['metres_per_count']}</param>
-        <param name="encoder_zero_counts">${cal['encoder_zero_counts']}</param>
-        <param name="velocity_mps_per_raw_unit">${cal['velocity_mps_per_raw_unit']}</param>
+        <param name="m_per_count">${cal['m_per_count']}</param>
+        <param name="velocity_from_encoder">${dict([(True, 'true'), (False, 'false')])[cal.get('velocity_from_encoder', True)]}</param>
+        <param name="soft_bounds_enabled">${dict([(True, 'true'), (False, 'false')])[cal.get('soft_bounds_enabled', False)]}</param>
+        <param name="soft_lower_m">${cal.get('soft_lower_m', float('nan'))}</param>
+        <param name="soft_upper_m">${cal.get('soft_upper_m', float('nan'))}</param>
+        <param name="velocity_mps_per_raw_unit">${cal.get('velocity_mps_per_raw_unit', float('nan'))}</param>
         <param name="force_x_newtons_per_count">${cal['force_x_newtons_per_count']}</param>
         <param name="force_y_newtons_per_count">${cal['force_y_newtons_per_count']}</param>
         <param name="force_z_newtons_per_count">${cal['force_z_newtons_per_count']}</param>
-        <param name="force_x_zero_counts">${cal['force_x_zero_counts']}</param>
-        <param name="force_y_zero_counts">${cal['force_y_zero_counts']}</param>
-        <param name="force_z_zero_counts">${cal['force_z_zero_counts']}</param>
+        <param name="force_x_zero_counts">${cal.get('force_x_zero_counts', 0.0)}</param>
+        <param name="force_y_zero_counts">${cal.get('force_y_zero_counts', 0.0)}</param>
+        <param name="force_z_zero_counts">${cal.get('force_z_zero_counts', 0.0)}</param>
       </xacro:if>
     </hardware>
     <joint name="carriage">
       <command_interface name="position">
-        <param name="min">0.0</param><param name="max">${travel}</param>
+        <!-- Only Gazebo knows these model-coordinate mechanical bounds.
+             Physical session-relative soft bounds are independent calibration. -->
+        <xacro:if value="${backend == 'gazebo'}">
+          <param name="min">0.0</param><param name="max">${travel}</param>
+        </xacro:if>
       </command_interface>
       <state_interface name="position">
         <xacro:if value="${backend == 'gazebo'}">

@@ -35,6 +35,8 @@ EthercatHardware::~EthercatHardware() {
 }
 void EthercatHardware::reset() noexcept {
   state_.fill(0);
+  session_.end();
+  calibration_.clear_reference();
   si_state_.fill(NAN);
   // Keep the final measured SI hold across error/cleanup. Interfaces stay NaN
   // until fresh, valid feedback is available on the next activation.
@@ -46,6 +48,11 @@ void EthercatHardware::reset() noexcept {
 }
 EthercatHardware::Callback
 EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
+  if (core_.configured() || active_) {
+    RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"),
+      "Cannot reinitialize an open hardware session; deactivate and clean up first");
+    return Callback::ERROR;
+  }
   if (SystemInterface::on_init(info) != Callback::SUCCESS)
     return Callback::ERROR;
   reset();
@@ -106,11 +113,6 @@ EthercatHardware::on_init(const hardware_interface::HardwareInfo &info) {
           if (resource.name + "/" + it.name != command_name || ++commands != 1)
             throw std::runtime_error(
                 "Only carriage/position may be commanded");
-          std::size_t used_min = 0, used_max = 0;
-          lower_ = std::stod(it.min, &used_min);
-          upper_ = std::stod(it.max, &used_max);
-          if (used_min != it.min.size() || used_max != it.max.size())
-            throw std::runtime_error("Invalid carriage command travel bounds");
         }
       }
     };
@@ -147,7 +149,7 @@ EthercatHardware::on_configure(const rclcpp_lifecycle::State &) {
   fault_reported_ = false;
   std::string error;
   try {
-    calibration_ = SiCalibration::load(info_.hardware_parameters, lower_, upper_);
+    calibration_ = SiCalibration::load(info_.hardware_parameters);
   } catch (const std::exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("zfc_ethercat_hardware"),
                  "Hardware configuration blocked before IgH access: %s", e.what());
@@ -198,6 +200,7 @@ bool EthercatHardware::stop() noexcept {
   phase_ = "shutdown";
   const bool success = core_.shutdown();
   hold_measured(); // shutdown exchanges may have supplied newer feedback
+  session_.suspend();
   if (!success)
     fault(FaultReason::shutdown_failure);
   diagnostics_.push(record(success ? "shutdown-confirmed" : "shutdown-failed"));
@@ -259,7 +262,8 @@ void EthercatHardware::copy_state() noexcept {
   si_state_.fill(NAN);
   if (can_claim()) {
     si_state_[0] = calibration_.position(s.motor.actual_position);
-    si_state_[1] = calibration_.velocity(s.motor.actual_velocity);
+    si_state_[1] = calibration_.velocity_from_encoder ? session_.velocity() :
+                   calibration_.velocity(s.motor.actual_velocity);
     si_state_[2] = calibration_.force(0, s.elm.x.raw_sample);
     si_state_[3] = calibration_.force(1, s.elm.y.raw_sample);
     si_state_[4] = calibration_.force(2, s.elm.z.raw_sample);
@@ -271,11 +275,12 @@ void EthercatHardware::hold_measured() noexcept {
 }
 bool EthercatHardware::can_claim() const noexcept {
   const auto &s = core_.snapshot();
-  return active_ && !starting_ && !fault_ && s.ready &&
+  return active_ && !starting_ && !fault_ && s.ready && session_.valid() &&
          zfc::ElmChannelValid(s.elm.x) && zfc::ElmChannelValid(s.elm.y) &&
          zfc::ElmChannelValid(s.elm.z) &&
          std::isfinite(calibration_.position(s.motor.actual_position)) &&
-         std::isfinite(calibration_.velocity(s.motor.actual_velocity)) &&
+         std::isfinite(calibration_.velocity_from_encoder ? session_.velocity() :
+                       calibration_.velocity(s.motor.actual_velocity)) &&
          std::isfinite(calibration_.force(0, s.elm.x.raw_sample)) &&
          std::isfinite(calibration_.force(1, s.elm.y.raw_sample)) &&
          std::isfinite(calibration_.force(2, s.elm.z.raw_sample));
@@ -389,6 +394,16 @@ EthercatHardware::read(const rclcpp::Time &, const rclcpp::Duration &period) {
   }
   last_exchange_ns_ = now;
   core_.read(now);
+  if (core_.snapshot().ready && !fault_) {
+    const auto &motor=core_.snapshot().motor;
+    if (!session_.observe(motor.actual_position, now, motor.actual_velocity==0,
+                          calibration_.m_per_count, zfc::kMaximumVelocity))
+      fault(FaultReason::encoder_discontinuity);
+    if (session_.valid() && !calibration_.reference_valid) {
+      calibration_.set_reference(session_.reference());
+      diagnostics_.push(record("session-reference"));
+    }
+  }
   if (starting_ && !fault_) {
     if (first_write_ && now - activation_end_ns_ > 10000000)
       fault(FaultReason::monotonic_gap);
@@ -458,7 +473,7 @@ EthercatHardware::Result EthercatHardware::write(const rclcpp::Time &,
     CiA402::UpdateCSPEnableState(core_.snapshot().motor, &output);
     output.target_position = core_.snapshot().motor.actual_position;
     hold_measured();
-    if (core_.snapshot().ready) {
+    if (core_.snapshot().ready && session_.valid() && calibration_.reference_valid) {
       starting_ = false;
       phase_ = "active";
       copy_state();

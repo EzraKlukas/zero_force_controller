@@ -1,0 +1,17 @@
+builtin_interfaces/Time stamp
+uint64 trial_id
+uint64 sequence
+uint8 phase
+uint8 fault_code
+bool valid
+float64 position_m
+float64 velocity_mps
+float64 force_n
+float64 reference_position_m
+float64 reference_velocity_mps
+float64 reference_acceleration_mps2
+float64 baseline_force_n
+float64 noise_rms_n
+float64 residual_force_n
+float64 progress
+uint64 excessive_periods

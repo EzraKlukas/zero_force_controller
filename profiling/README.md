@@ -4,7 +4,7 @@ The instrumented `profile_control_node` runs Controller Manager's read → updat
 → write loop with the same hardware and application plugins as normal bringup.
 Its scheduling code follows the installed Humble Controller Manager 2.54.0;
 CMake requires that exact version so an upgrade requires reviewing the loop.
-The default profiling configuration uses `do_calibrate=false`. Launch leaves
+The default profiling configuration uses `hold_only=true`. Launch leaves
 hardware unconfigured and the controller inactive.
 
 Build from the repository root with ROS Humble sourced:
@@ -32,9 +32,9 @@ export ZFC_RUN_ID=1
 ros2 launch zfc_profiling profile.launch.py
 ```
 
-Follow the [SI bringup procedure](../docs/si-refactor.md)
+Follow the [current controller and SI bringup procedure](../docs/controller-design.md)
 for hardware readiness, deliberate controller activation, and shutdown. Hold
-mode seeds the measured position and never advances the ramp. Allow capacity
+mode seeds the measured position and never advances either motion logic. Allow capacity
 for startup and warmup as well as the desired capture. Stop the controller,
 deactivate/unconfigure hardware, then shut down the launch normally. Traces
 are written only after the cycle producer stops; SIGKILL loses them. Exclusive
@@ -44,6 +44,12 @@ new samples and records a final drop count.
 `ZFC_DIAGNOSTIC_MODE=production` is the default; `quiet` suppresses changed-command
 records but retains fault/status diagnostics. Record this setting in the manifest.
 There is no cyclic allocation, file writing or background trace consumer.
+Controller telemetry has its own bounded queue and non-RT publishing timer;
+it is separate from the binary cycle trace. Both motion plugins retain the same
+controller/calculation probe boundaries, but profiling launch loads only the
+inactive hold-only zero-force plugin. Calibration is a separate plugin, never a
+`do_calibrate` parameter. See the controller design for the OFF/FINE no-IgH
+build/test commands; full backend regressions still require the genuine SDK.
 
 Capture environment and process metadata before/after a run with:
 
