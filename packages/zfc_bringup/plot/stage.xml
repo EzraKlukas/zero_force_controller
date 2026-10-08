@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <tabbed_widget name="Main Window" parent="main_window">
+    <Tab tab_name="Zero force: Position (m)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Position (m)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/zero_force/state/position_m" color="#2060c0"/>
+          <curve name="/plot/zero_force/state/reference_position_m" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Zero force: Velocity (m/s)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Velocity (m/s)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/zero_force/state/velocity_mps" color="#2060c0"/>
+          <curve name="/plot/zero_force/state/reference_velocity_mps" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Zero force: Force and baseline (N)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Force and baseline (N)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/zero_force/state/force_n" color="#2060c0"/>
+          <curve name="/plot/zero_force/state/baseline_force_n" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Zero force: Residual and inertia (N)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Residual and inertia (N)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/zero_force/state/residual_force_n" color="#2060c0"/>
+          <curve name="/plot/zero_force/inertial_compensation_n" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Zero force: Effective acceleration (m/s2)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Effective acceleration (m/s2)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/zero_force/state/reference_acceleration_mps2" color="#2060c0"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Zero force: Phase and progress" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Phase and progress">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/zero_force/state/phase" color="#2060c0"/>
+          <curve name="/plot/zero_force/state/progress" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Calibration: Position (m)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Position (m)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/calibration/state/position_m" color="#2060c0"/>
+          <curve name="/plot/calibration/state/reference_position_m" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Calibration: Velocity (m/s)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Velocity (m/s)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/calibration/state/velocity_mps" color="#2060c0"/>
+          <curve name="/plot/calibration/state/reference_velocity_mps" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Calibration: Force and baseline (N)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Force and baseline (N)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/calibration/state/force_n" color="#2060c0"/>
+          <curve name="/plot/calibration/state/baseline_force_n" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Calibration: Residual and inertia (N)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Residual and inertia (N)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/calibration/state/residual_force_n" color="#2060c0"/>
+          <curve name="/plot/calibration/inertial_compensation_n" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Calibration: Effective acceleration (m/s2)" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Effective acceleration (m/s2)">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/calibration/state/reference_acceleration_mps2" color="#2060c0"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <Tab tab_name="Calibration: Phase and progress" containers="1"><Container>
+      <DockSplitter orientation="|" count="1" sizes="1"><DockArea name="Phase and progress">
+        <plot mode="TimeSeries" style="Lines" line_width="1.0"><limitY/>
+          <curve name="/plot/calibration/state/phase" color="#2060c0"/>
+          <curve name="/plot/calibration/state/progress" color="#e07030"/>
+        </plot>
+      </DockArea></DockSplitter>
+    </Container></Tab>
+    <currentTabIndex index="0"/>
+  </tabbed_widget>
+  <use_relative_time_offset enabled="false"/>
+  <streaming_buffer_size value="120"/>
+  <Plugins><plugin ID="ROS2 Topic Subscriber">
+    <use_header_stamp value="true"/><discard_large_arrays value="true"/>
+    <max_array_size value="100"/><boolean_strings_to_number value="true"/>
+    <remove_suffix_from_strings value="true"/>
+    <selected_topics value="/plot/zero_force;/plot/calibration"/>
+  </plugin></Plugins>
+  <previouslyLoaded_Streamer name="ROS2 Topic Subscriber"/>
+</root>

@@ -37,9 +37,11 @@ Offline OFF/FINE controller/model builds and tests work without IgH; ignore
 `zfc_ethercat_core` and `zfc_ethercat_hardware` as documented. Genuine backend
 and fake-IgH protection regressions still require the real SDK.
 
-Gazebo integration is deferred. Xacro's prepared Gazebo branch expands/parses
-and loads shared controller parameters plus the simulation overlay, but
-`local.launch.py backend:=gazebo` exits before creating physical nodes or a
-standalone manager. No worlds, spawning, bridges, servo dynamics, fitting node
-or analysis coordinator are implemented. This model does not validate calibration
-physics, hardware force signs or simulator runtime.
+Fortress bringup, actual tool-force interaction and typed telemetry plotting are
+available with `ros2 launch zfc_bringup local.launch.py backend:=gazebo plot:=true`.
+Both motion controllers start inactive; the stock Gazebo plugin owns the sole
+manager. See [gazebo-workflow.md](docs/gazebo-workflow.md) for exact offline checks,
+manual strict switching, force pulses, plotting and recording. Headless motion/
+force tests pass; interactive GUI validation requires a display. No servo
+dynamics, fitting node or analysis coordinator is implemented. The illustrative
+model does not validate physical calibration or hardware force conventions.

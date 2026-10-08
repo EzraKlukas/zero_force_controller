@@ -10,17 +10,19 @@ were deliberately removed; canonical files are in `packages/zfc_bringup`.
 The shared contract is `carriage/position` command/state (m),
 `carriage/velocity` state (m/s), and `load_cell/force.x/y/z` states (N).
 One StageSystem and one world-anchored upward prismatic carriage are retained.
-The fixed sensor joint to a distal tool is preserved in the prepared Gazebo
+The fixed sensor joint to a distal tool is preserved in the Gazebo
 branch. No actuator torque is exposed as prismatic effort and no measured
 sensor torque is invented. Dimensions, inertias, travel and sensor placement
 are provisional, not measured hardware or calibration-physics validation.
 
 Backend selection rejects invalid Xacro values without fallback:
-EtherCAT uses the existing physical plugin; the prepared Gazebo branch selects
+EtherCAT uses the existing physical plugin; the Gazebo branch selects
 stock gz_ros2_control/GazeboSimSystem. `controllers_file` is an absolute shared
 YAML path; the Gazebo plugin also receives its simulation overlay. Hardware
 startup settings, including `unconfigured: [StageSystem]`, do not leak into it.
-No simulation launch, adapter, spawning, world, bridge or dynamics is supplied.
+Simulation launch/world/spawning/bridges and tool-force interaction are now
+documented in [gazebo-workflow.md](gazebo-workflow.md); no hardware adapter or
+actuator dynamics was added.
 The physical launch expands/publishes robot_description, loads both physical
 YAMLs and leaves four controllers inactive and StageSystem unconfigured.
 Broadcasters require explicit activation after valid data.
@@ -33,7 +35,8 @@ persisted lower-stop datum. Cleanup/reinitialization ends that reference.
 Unexpected detectable encoder discontinuities stop instead of silently
 re-zeroing. Optional measured hardware soft limits use signed session
 coordinates; physical switches remain authoritative when absolute travel is
-unknown. Gazebo's illustrative [0,0.5] m travel does not constrain hardware
+unknown. Gazebo's illustrative [-0.25,0.25] m session coordinate (known mid-travel
+startup) does not constrain hardware
 commands. The absolute model-to-session TF offset remains unmeasured.
 
 PDOs/core retain native units. Conversion and finite/int32/bounds/rounding
@@ -64,11 +67,13 @@ Current finite defaults and typed/batched trial capture are documented in the
 controller design; they are not fitted or hardware-tuned values.
 
 Verification records are separate: the isolated starting `e7453b5` offline
-suite passed 25 tests, while the current OFF/FINE suites each pass 41 tests and
+suite passed 25 tests, while the controller-separation OFF/FINE suites each passed 41 tests and
 the four existing pandas-based analysis tests pass. Initial `88772b5`
 migration baseline failures were absent IgH discovery and stale bringup
 parameter assertions; those are historical, not current offline failures.
 The former missing-pandas environment issue is resolved in this Distrobox.
+Gazebo-stage changes and their current offline/runtime check results are
+recorded separately in [gazebo-workflow.md](gazebo-workflow.md).
 No genuine-IgH or SDK-dependent fake-IgH protection suite was run here.
 Enable `-DZFC_HARDWARE_TESTS=ON` with genuine IgH on Jetson.
 

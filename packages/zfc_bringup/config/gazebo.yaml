@@ -1,21 +1,22 @@
-# Preparation only: future Gazebo plugin loads this after controllers.yaml.
+# Fortress plugin loads this after controllers.yaml.
 # Do not inherit hardware_components_initial_state from hardware.yaml.
 controller_manager:
   ros__parameters:
     use_sim_time: true
-    lock_memory: false
 zero_force_controller:
   ros__parameters:
+    finite_fault_hold: true
     use_sim_time: true
     use_position_bounds: true
-    lower_position_m: 0.0
-    upper_position_m: 0.5
+    lower_position_m: -0.25
+    upper_position_m: 0.25
 calibration_sequencer_controller:
   ros__parameters:
+    finite_fault_hold: true
     use_sim_time: true
     use_position_bounds: true
-    lower_position_m: 0.0
-    upper_position_m: 0.5
+    lower_position_m: -0.25
+    upper_position_m: 0.25
 joint_state_broadcaster:
   ros__parameters:
     use_sim_time: true

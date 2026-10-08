@@ -7,10 +7,12 @@ controller_manager:
     thread_priority: 50
 zero_force_controller:
   ros__parameters:
+    finite_fault_hold: false
     use_sim_time: false
     use_position_bounds: false
 calibration_sequencer_controller:
   ros__parameters:
+    finite_fault_hold: false
     use_sim_time: false
     use_position_bounds: false
 joint_state_broadcaster:

@@ -4,13 +4,14 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/ControllerState.msg" "msg/TelemetryBatch.msg" "msg/TrialStatus.msg"
-  DEPENDENCIES builtin_interfaces)
+  "msg/ControllerState.msg" "msg/TelemetryBatch.msg" "msg/TrialStatus.msg" "msg/PlotState.msg"
+  DEPENDENCIES builtin_interfaces std_msgs)
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 ament_export_include_directories(include/${PROJECT_NAME})
-ament_export_dependencies(rosidl_default_runtime builtin_interfaces rclcpp)
+ament_export_dependencies(rosidl_default_runtime builtin_interfaces std_msgs rclcpp)
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(capture_test test/capture_test.cpp)

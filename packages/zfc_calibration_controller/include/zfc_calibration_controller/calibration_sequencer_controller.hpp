@@ -3,6 +3,7 @@
 #include "zfc_calibration_controller/calibration_sequencer_logic.hpp"
 #include "zfc_calibration_controller/calibration_parameters.hpp"
 #include "zfc_interfaces/telemetry_publisher.hpp"
+#include "zfc_interfaces/command_output.hpp"
 #include <atomic>
 namespace zfc_calibration_controller {
 class CalibrationSequencerController : public controller_interface::ControllerInterface {
@@ -15,6 +16,8 @@ public:
   controller_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State &) override;
   controller_interface::return_type update(const rclcpp::Time &, const rclcpp::Duration &) override;
 private:
+  void write_command(double requested,double measured) noexcept;
+  zfc::CommandOutput output_;
   CalibrationSequencerLogic logic_;
   std::shared_ptr<ParamListener> listener_;
   std::unique_ptr<zfc::TelemetryPublisher> telemetry_;

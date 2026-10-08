@@ -4,6 +4,11 @@ zfc_zero_force_controller:
     default_value: "carriage"
     description: "Joint resource; structural, fixed at initialization."
     read_only: true
+  finite_fault_hold:
+    type: bool
+    default_value: false
+    read_only: true
+    description: "Simulation-only finite hold on logic fault; requires use_sim_time. Physical default retains NaN stop."
   force_interface:
     type: string
     default_value: "load_cell/force.x"

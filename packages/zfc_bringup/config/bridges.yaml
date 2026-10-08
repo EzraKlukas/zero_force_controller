@@ -1,0 +1,21 @@
+# Sole time authority is Gazebo. Never bridge ROS clock back into Fortress.
+- ros_topic_name: /clock
+  gz_topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: ignition.msgs.Clock
+  direction: GZ_TO_ROS
+- ros_topic_name: /simulation/raw_load_cell
+  gz_topic_name: /load_cell
+  ros_type_name: geometry_msgs/msg/WrenchStamped
+  gz_type_name: ignition.msgs.Wrench
+  direction: GZ_TO_ROS
+- ros_topic_name: /simulation/force_input
+  gz_topic_name: /world/zfc/force_input
+  ros_type_name: ros_gz_interfaces/msg/EntityWrench
+  gz_type_name: ignition.msgs.EntityWrench
+  direction: ROS_TO_GZ
+- ros_topic_name: /simulation/applied_force
+  gz_topic_name: /world/zfc/applied_force
+  ros_type_name: std_msgs/msg/Float64
+  gz_type_name: ignition.msgs.Double
+  direction: GZ_TO_ROS

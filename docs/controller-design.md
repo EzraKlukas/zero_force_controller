@@ -72,7 +72,8 @@ and mounting/load path. The provisional sensor frame +X is upward. Controller
 response polarity does not substitute for verifying hardware conventions.
 
 Startup zero is NOT a lower stop or an absolute mechanical datum.
-Gazebo's prepared model has illustrative bounds [0,0.5] m. Hardware does not
+Gazebo's model now has illustrative bounds [-0.25,0.25] m around a known
+mid-travel simulation startup. Hardware does not
 inherit those command limits. Optional installation `soft_bounds_enabled`,
 `soft_lower_m`, `soft_upper_m` are measured session-relative bounds with
 general signed lower < upper; disabled by default. With no absolute travel
@@ -279,8 +280,9 @@ Verify disabled-voltage completion and single master release. Historical
 it is not validation of this checkout. On Jetson build/test all packages with
 genuine IgH and `-DZFC_HARDWARE_TESTS=ON` before this short hold-only smoke test.
 Do not run the motion-trial example until SI gains, clearance and conventions
-are independently reviewed. Gazebo launch/spawning/worlds/bridges/dynamics and
-analysis orchestration remain separate tasks; backend:=gazebo still exits early.
+are independently reviewed. Gazebo launch/spawning/worlds/bridges and force
+interaction are now in [gazebo-workflow.md](gazebo-workflow.md); actuator dynamics
+and analysis orchestration remain separate tasks.
 
 ## Exact offline verification
 
@@ -336,4 +338,16 @@ soft bounds and absolute TF offset. Real 1 kHz latency, scheduling, locking,
 affinity, bus/DC timing and stopping need Jetson checks. Non-RT telemetry timer
 delivery depends on executor scheduling; queue/drop/status diagnostics expose
 backlog. Existing hardware lifecycle shutdown remains bounded but blocking.
-No simulator or hardware validation is claimed.
+The original controller-only checks did not validate a simulator or hardware.
+Current headless simulation acceptance results are separately recorded in the
+Gazebo workflow; no hardware validation is claimed.
+
+Simulation ROS plumbing adds structural read-only `finite_fault_hold` (default
+false, true only in gazebo.yaml and requiring use_sim_time). It freezes a finite
+output on the first logic fault, without changing NaN/fault telemetry or ERROR
+returns. Physical hardware.yaml explicitly keeps false, preserving bounded-stop
+semantics. Both controller fault paths are regression-tested with invalid sensor
+feedback. PlotState is an optional non-RT visualization wrapper: Header, original
+ControllerState and reconstructed inertial_compensation_n. The original full-rate
+capture and terminal status remain authoritative; see the workflow for preview,
+decimation, plotting and recording semantics.

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>zfc_bringup</name><version>0.1.0</version>
-  <description>Local Jetson Controller Manager bringup</description>
+  <description>Inactive physical startup and isolated Fortress stage bringup</description>
   <maintainer email="ezraklukas@users.noreply.github.com">Ezra Klukas</maintainer>
   <license>LicenseRef-Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -16,6 +16,10 @@
   <exec_depend>zfc_ethercat_hardware</exec_depend>
   <exec_depend>zfc_zero_force_controller</exec_depend>
   <exec_depend>zfc_calibration_controller</exec_depend>
+  <exec_depend>zfc_simulation</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend><exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend><exec_depend>plotjuggler_ros</exec_depend>
+  <exec_depend>plotjuggler</exec_depend>
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>python3-yaml</test_depend>
   <test_depend>ament_cmake_gtest</test_depend>

@@ -21,7 +21,7 @@ def test_model(backend):
     assert robot.find("joint[@name='world_to_base']/parent").attrib["link"] == "world"
     joint = robot.find("joint[@name='carriage']")
     assert joint.find("axis").attrib["xyz"] == "0 0 1"
-    assert joint.find("limit").attrib["lower"] == "0.0"
+    assert float(joint.find("limit").attrib["lower"]) == (-.25 if backend == "gazebo" else 0.)
     assert len(system.findall(".//command_interface")) == 1
     assert len(system.findall(".//state_interface")) == 5
     assert [s.attrib["name"] for s in system.findall("sensor/state_interface")] == [
@@ -39,7 +39,9 @@ def test_model(backend):
     if backend == "gazebo":
         assert plugin == "gz_ros2_control/GazeboSimSystem"
         assert system.findall("hardware/param") == []
-        assert [float(p.text) for p in system.findall("joint/command_interface/param")] == [0, 0.5]
+        assert [float(p.text) for p in system.findall("joint/command_interface/param")] == [-.25, .25]
+        assert float(joint.find("limit").attrib["velocity"]) == .2
+        assert robot.find("gazebo[@reference='tool_mount']/preserveFixedJoint").text == "true"
         sensor = robot.find("gazebo[@reference='load_cell_joint']")
         assert sensor.find("preserveFixedJoint").text == "true"
         assert sensor.find("sensor/force_torque/frame").text == "child"
@@ -114,6 +116,36 @@ def test_launch_gazebo_and_invalid_backend_exit_before_nodes():
     spec = importlib.util.spec_from_file_location("zfc_launch", ROOT / "launch/local.launch.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    for backend, message in (("gazebo", "deferred"), ("typo", "invalid")):
+    for backend, message in (("gazebo", "simulation_nodes"), ("typo", "invalid")):
         with pytest.raises(RuntimeError, match=message):
             module.build_physical_nodes(backend, "/unused", "/unused", "/unused")
+
+
+def test_world_bridge_and_simulation_only_policy():
+    world = ET.parse(ROOT / "worlds/stage.sdf").getroot().find("world")
+    assert float(world.find("physics/max_step_size").text) == .001
+    assert {p.attrib["filename"] for p in world.findall("plugin")} >= {
+        "ignition-gazebo-physics-system", "ignition-gazebo-user-commands-system",
+        "ignition-gazebo-scene-broadcaster-system", "ignition-gazebo-forcetorque-system"}
+    bridges = yaml.safe_load((ROOT / "config/bridges.yaml").read_text())
+    clock = next(b for b in bridges if b["ros_topic_name"] == "/clock")
+    assert clock["direction"] == "GZ_TO_ROS"
+    assert clock["gz_type_name"] == "ignition.msgs.Clock"
+    for name in ("zero_force_controller", "calibration_sequencer_controller"):
+        assert yaml.safe_load((ROOT / "config/gazebo.yaml").read_text())[name]["ros__parameters"]["finite_fault_hold"] is True
+        assert yaml.safe_load((ROOT / "config/hardware.yaml").read_text())[name]["ros__parameters"]["finite_fault_hold"] is False
+
+
+def test_plot_layout_contract():
+    root = ET.parse(ROOT / "plot/stage.xml").getroot()
+    plugin = root.find("Plugins/plugin")
+    assert plugin.attrib["ID"] == "ROS2 Topic Subscriber"
+    assert plugin.find("use_header_stamp").attrib["value"] == "true"
+    assert plugin.find("selected_topics").attrib["value"] == "/plot/zero_force;/plot/calibration"
+    assert root.find("previouslyLoaded_Streamer").attrib["name"] == "ROS2 Topic Subscriber"
+    plotted = {c.attrib["name"] for c in root.findall(".//Tab//curve")}
+    assert root.find(".//plotmatrix") is None
+    for topic in ("zero_force", "calibration"):
+        assert f"/plot/{topic}/inertial_compensation_n" in plotted
+        assert f"/plot/{topic}/state/reference_acceleration_mps2" in plotted
+        assert f"/plot/{topic}/state/phase" in plotted

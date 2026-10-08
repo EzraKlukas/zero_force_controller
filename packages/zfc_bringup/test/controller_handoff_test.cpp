@@ -120,4 +120,31 @@ TEST_F(HandoffTest, CalibrationCompletionIsStationaryTimestampedAndLatched) {
   EXPECT_EQ(cal->on_deactivate(rclcpp_lifecycle::State{}),Callback::SUCCESS);
   EXPECT_DOUBLE_EQ(target,actual);
 }
+TEST_F(HandoffTest, InvalidSensorKeepsPhysicalNaNButLatchesFiniteSimulationHold) {
+  for (const bool simulation : {false,true}) {
+    for (const char *plugin : {"zfc_zero_force_controller/ZeroForceController",
+                              "zfc_calibration_controller/CalibrationSequencerController"}) {
+      auto c=make(plugin,"fault_policy",{rclcpp::Parameter("finite_fault_hold",simulation)});
+      double actual=.25,velocity=0,force=2.4525,target=NAN;
+      hardware_interface::CommandInterface command("carriage","position",&target);
+      hardware_interface::StateInterface q("carriage","position",&actual),
+        v("carriage","velocity",&velocity),f("load_cell","force.x",&force);
+      std::vector<hardware_interface::LoanedCommandInterface> commands;
+      commands.emplace_back(command);
+      std::vector<hardware_interface::LoanedStateInterface> states;
+      states.emplace_back(q); states.emplace_back(v); states.emplace_back(f);
+      c->assign_interfaces(std::move(commands),std::move(states));
+      ASSERT_EQ(c->on_activate(rclcpp_lifecycle::State{}),Callback::SUCCESS);
+      force=NAN;
+      EXPECT_EQ(c->update(rclcpp::Time(1000000LL),rclcpp::Duration::from_nanoseconds(1000000)),UpdateResult::ERROR);
+      if (simulation) EXPECT_DOUBLE_EQ(target,.25);
+      else EXPECT_TRUE(std::isnan(target));
+      actual=.26; // A fault must not follow later feedback drift.
+      EXPECT_EQ(c->update(rclcpp::Time(2000000LL),rclcpp::Duration::from_nanoseconds(1000000)),UpdateResult::ERROR);
+      EXPECT_EQ(c->on_deactivate(rclcpp_lifecycle::State{}),Callback::SUCCESS);
+      if (simulation) EXPECT_DOUBLE_EQ(target,.25);
+      else EXPECT_TRUE(std::isnan(target));
+    }
+  }
+}
 } // namespace

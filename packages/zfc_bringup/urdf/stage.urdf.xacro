@@ -2,17 +2,19 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="zfc_stage">
   <!-- REVIEW DRAFT. Geometry, masses, travel and limits are illustrative.
        Installation calibration must be measured before physical configuration.
-       This file prepares Gazebo integration; it is not a simulation launch. -->
+       Gazebo uses known illustrative bounds, not measured hardware bounds. -->
   <xacro:arg name="backend" default="ethercat"/>
   <xacro:arg name="controllers_file" default="${xacro.abs_filename('../config/controllers.yaml')}"/>
   <xacro:arg name="backend_file" default="${xacro.abs_filename('../config/gazebo.yaml')}"/>
   <xacro:arg name="hardware_calibration_file" default="${xacro.abs_filename('../config/hardware_calibration.yaml')}"/>
   <xacro:arg name="travel_m" default="0.50"/>
-  <xacro:arg name="velocity_limit_mps" default="0.10"/>
+  <!-- Fortress velocity servo requires headroom above the 0.1 m/s trajectory;
+       at the exact DART velocity limit its response can remain saturated. -->
+  <xacro:arg name="velocity_limit_mps" default="${0.2 if '$(arg backend)' == 'gazebo' else 0.1}"/>
   <xacro:arg name="effort_limit_n" default="100.0"/>
   <xacro:arg name="carriage_mass_kg" default="2.0"/>
   <xacro:arg name="tool_mass_kg" default="0.20"/>
-  <xacro:arg name="initial_position_m" default="0.25"/>
+  <xacro:arg name="initial_position_m" default="0.0"/>
   <xacro:arg name="diagnostic_mode" default="production"/>
   <xacro:property name="backend" value="$(arg backend)"/>
   <xacro:property name="backend_plugins" value="${dict(ethercat='zfc_ethercat_hardware/EthercatHardware', gazebo='gz_ros2_control/GazeboSimSystem')}"/>
@@ -20,6 +22,7 @@
   <xacro:property name="travel" value="$(arg travel_m)"/>
   <xacro:property name="carriage_mass" value="$(arg carriage_mass_kg)"/>
   <xacro:property name="tool_mass" value="$(arg tool_mass_kg)"/>
+  <xacro:property name="simulation_datum" value="${0.25 if backend == 'gazebo' else 0.0}"/>
 
   <material name="rail_black"><color rgba="0.12 0.13 0.14 1"/></material>
   <material name="aluminium"><color rgba="0.65 0.68 0.70 1"/></material>
@@ -60,14 +63,14 @@
     </visual>
   </link>
 
-  <!-- Gazebo q=0 is the model lower datum. Hardware q=0 is a stationary
+  <!-- Gazebo q=0 is the KNOWN 0.25 m mid-travel session reference. Hardware q=0 is a stationary
        session reference: physical TF/mechanical offset remains unknown.
        +q is upward once encoder polarity is verified. -->
   <joint name="carriage" type="prismatic">
     <parent link="base_link"/><child link="carriage_link"/>
-    <origin xyz="0.09 0 0.20"/>
+    <origin xyz="${0.14 if backend == 'gazebo' else 0.09} 0 ${0.20+simulation_datum}"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0.0" upper="${travel}" effort="$(arg effort_limit_n)"
+    <limit lower="${-simulation_datum}" upper="${travel-simulation_datum}" effort="$(arg effort_limit_n)"
            velocity="$(arg velocity_limit_mps)"/>
     <dynamics damping="0.0" friction="0.0"/>
   </joint>
@@ -91,7 +94,7 @@
   </link>
   <joint name="tool_mount" type="fixed">
     <parent link="load_cell_link"/><child link="tool_link"/>
-    <origin xyz="0 0 -0.055"/>
+    <origin xyz="0 0 ${-0.06 if backend == 'gazebo' else -0.055}"/>
   </joint>
   <link name="tool_link">
     <xacro:box_inertia mass="${tool_mass}" sx="0.08" sy="0.12" sz="0.08"/>
@@ -132,7 +135,7 @@
         <!-- Only Gazebo knows these model-coordinate mechanical bounds.
              Physical session-relative soft bounds are independent calibration. -->
         <xacro:if value="${backend == 'gazebo'}">
-          <param name="min">0.0</param><param name="max">${travel}</param>
+          <param name="min">${-simulation_datum}</param><param name="max">${travel-simulation_datum}</param>
         </xacro:if>
       </command_interface>
       <state_interface name="position">
@@ -140,7 +143,9 @@
           <param name="initial_value">$(arg initial_position_m)</param>
         </xacro:if>
       </state_interface>
-      <state_interface name="velocity"/>
+      <state_interface name="velocity">
+        <xacro:if value="${backend == 'gazebo'}"><param name="initial_value">0.0</param></xacro:if>
+      </state_interface>
       <!-- No effort state until motor torque -> joint force is verified. -->
     </joint>
     <sensor name="load_cell">
@@ -163,6 +168,8 @@
         </force_torque>
       </sensor>
     </gazebo>
+    <!-- Keep the force target an actual downstream link, not a merged alias. -->
+    <gazebo reference="tool_mount"><preserveFixedJoint>true</preserveFixedJoint></gazebo>
     <gazebo>
       <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
         <robot_param>robot_description</robot_param>
