@@ -1,0 +1,5 @@
+# Coordinator serializes these with RunCalibration and ApplyCalibration.
+# prepare, observe, start_zero_force. Never releases the drive.
+string command
+# Physical operator affirmation for THIS request; sensors cannot prove no contact.
+bool external_contact_clear

@@ -1,0 +1,26 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from zfc_interfaces/srv/OperatorCommand.srv
+// generated code does not contain a copyright notice
+
+
+module zfc_interfaces {
+  module srv {
+    @verbatim (language="comment", text=
+      "Coordinator serializes these with RunCalibration and ApplyCalibration." "\n"
+      "prepare, observe, start_zero_force. Never releases the drive.")
+    struct OperatorCommand_Request {
+      string command;
+
+      @verbatim (language="comment", text=
+        "Physical operator affirmation for THIS request; sensors cannot prove no contact.")
+      boolean external_contact_clear;
+    };
+    struct OperatorCommand_Response {
+      boolean success;
+
+      boolean stop_acknowledged;
+
+      string message;
+    };
+  };
+};

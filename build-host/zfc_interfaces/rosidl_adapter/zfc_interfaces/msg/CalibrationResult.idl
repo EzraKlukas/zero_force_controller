@@ -1,0 +1,38 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from zfc_interfaces/msg/CalibrationResult.msg
+// generated code does not contain a copyright notice
+
+
+module zfc_interfaces {
+  module msg {
+    @verbatim (language="comment", text=
+      "Signed slope of force.x against effective commanded acceleration; NOT total mass.")
+    struct CalibrationResult {
+      boolean valid;
+
+      string reason;
+
+      double inertial_force_coefficient_kg;
+
+      double intercept_n;
+
+      double r_squared;
+
+      double residual_rms_n;
+
+      double uncertainty_kg;
+
+      uint64 sample_count;
+
+      uint64 plateau_count;
+
+      double positive_slope_kg;
+
+      double negative_slope_kg;
+
+      double tracking_rms_m;
+
+      string acceleration_source;
+    };
+  };
+};

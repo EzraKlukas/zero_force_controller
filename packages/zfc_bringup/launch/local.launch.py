@@ -5,11 +5,9 @@ import hashlib
 import yaml
 from pathlib import Path
 import xacro
-from ament_index_python.packages import get_package_share_directory, get_package_prefix
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, ExecuteProcess, RegisterEventHandler, EmitEvent, LogInfo
-from launch.event_handlers import OnProcessExit
-from launch.events import Shutdown
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from zfc_operator.launch_helpers import network_actions, relay_node, plot_node, clock_node
@@ -76,7 +74,33 @@ def analysis_node(simulation, tool_mass=.2, analysis_file='', physical_files=Non
                 parameters=[selected, settings], output='screen')
 
 
+def gazebo_dependencies():
+    # Resolve only after selecting Gazebo. Physical launch/import never needs
+    # the optional packages, Fortress executable, or simulation launch helpers.
+    import shutil
+    from ament_index_python.packages import get_package_prefix, PackageNotFoundError
+    prefixes, missing = {}, []
+    for package in ('zfc_simulation', 'gz_ros2_control', 'ros_gz_sim', 'ros_gz_bridge'):
+        try:
+            prefixes[package] = get_package_prefix(package)
+        except PackageNotFoundError:
+            missing.append(package)
+    executable = shutil.which('ign')
+    if executable is None:
+        missing.append('ign (Gazebo Fortress executable)')
+    if missing:
+        raise RuntimeError('Gazebo backend dependencies missing: '+', '.join(missing)+
+            '. Build/source the simulation overlay with ZFC_WITH_SIMULATION=1 '
+            '(include zfc_simulation), and provide the matching Humble/Fortress runtime. '
+            'Use backend:=ethercat for hardware-only operation; no backend processes were started.')
+    return prefixes, executable
+
+
 def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False, relay=True, rate=100., analysis_file=''):
+    prefixes, executable = gazebo_dependencies()
+    from launch.actions import ExecuteProcess, RegisterEventHandler, EmitEvent, LogInfo
+    from launch.event_handlers import OnProcessExit
+    from launch.events import Shutdown
     share = Path(get_package_share_directory("zfc_bringup"))
     if not Path(controllers_file).is_absolute():
         raise RuntimeError("controllers_file must be absolute")
@@ -86,10 +110,10 @@ def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False, rel
         mappings={"backend": "gazebo", "controllers_file": controllers_file,
                   "backend_file": str(share / "config/gazebo.yaml"),
                   "tool_mass_kg": str(tool_mass)}).toxml()
-    plugin_path = os.pathsep.join([str(Path(get_package_prefix("zfc_simulation")) / "lib"),
+    plugin_path = os.pathsep.join([str(Path(prefixes["zfc_simulation"]) / "lib"),
                                   os.environ.get("LD_LIBRARY_PATH", ""),
                                   os.environ.get("IGN_GAZEBO_SYSTEM_PLUGIN_PATH", "")])
-    server = ExecuteProcess(cmd=["ign", "gazebo", "-r", "-s", "-v", "3",
+    server = ExecuteProcess(cmd=[executable, "gazebo", "-r", "-s", "-v", "3",
                                 str(share / "worlds/stage.sdf")],
         additional_env={"IGN_GAZEBO_SYSTEM_PLUGIN_PATH": plugin_path}, output="screen")
     spawn = Node(package="ros_gz_sim", executable="create", output="screen",
@@ -129,7 +153,7 @@ def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False, rel
     if relay:
         actions.append(relay_node(True, rate, plot))
     if gui:
-        actions.append(ExecuteProcess(cmd=["ign", "gazebo", "-g", "-v", "2"], output="screen"))
+        actions.append(ExecuteProcess(cmd=[executable, "gazebo", "-g", "-v", "2"], output="screen"))
     if plot:
         actions.append(plot_node())
         if not relay:

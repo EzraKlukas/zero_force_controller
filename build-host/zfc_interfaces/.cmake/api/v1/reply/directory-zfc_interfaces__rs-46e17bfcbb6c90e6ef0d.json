@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "zfc_interfaces__rs",
+		"source" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_interfaces/zfc_interfaces__rs"
+	}
+}

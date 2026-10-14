@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from zfc_operator.network_probe import main
+main()

@@ -1,0 +1,14 @@
+std_msgs/Header header
+uint64 trial_id
+string stage
+uint8 stage_code
+float64 progress
+uint64 recorded_samples
+uint64 dropped_samples
+uint64 final_sequence
+bool stop_acknowledged
+string detail
+zfc_interfaces/CalibrationResult fit
+string backend
+bool operation_pending
+string trial_directory

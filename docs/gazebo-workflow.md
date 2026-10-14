@@ -17,6 +17,7 @@ Run at the repository root, in a fresh terminal (do not mix OFF/FINE overlays):
 
 ```bash
 source /opt/ros/humble/setup.bash
+export ZFC_WITH_SIMULATION=1  # Enable bringup's optional Gazebo dependency graph.
 colcon build --base-paths packages \
   --packages-ignore zfc_ethercat_core zfc_ethercat_hardware \
   --build-base /tmp/zfc-prompt2-build --install-base /tmp/zfc-prompt2-install \

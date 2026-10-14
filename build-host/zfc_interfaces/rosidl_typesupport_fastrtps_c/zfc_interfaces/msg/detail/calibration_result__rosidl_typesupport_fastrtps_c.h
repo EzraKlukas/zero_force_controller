@@ -1,0 +1,37 @@
+// generated from rosidl_typesupport_fastrtps_c/resource/idl__rosidl_typesupport_fastrtps_c.h.em
+// with input from zfc_interfaces:msg/CalibrationResult.idl
+// generated code does not contain a copyright notice
+#ifndef ZFC_INTERFACES__MSG__DETAIL__CALIBRATION_RESULT__ROSIDL_TYPESUPPORT_FASTRTPS_C_H_
+#define ZFC_INTERFACES__MSG__DETAIL__CALIBRATION_RESULT__ROSIDL_TYPESUPPORT_FASTRTPS_C_H_
+
+
+#include <stddef.h>
+#include "rosidl_runtime_c/message_type_support_struct.h"
+#include "rosidl_typesupport_interface/macros.h"
+#include "zfc_interfaces/msg/rosidl_typesupport_fastrtps_c__visibility_control.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+ROSIDL_TYPESUPPORT_FASTRTPS_C_PUBLIC_zfc_interfaces
+size_t get_serialized_size_zfc_interfaces__msg__CalibrationResult(
+  const void * untyped_ros_message,
+  size_t current_alignment);
+
+ROSIDL_TYPESUPPORT_FASTRTPS_C_PUBLIC_zfc_interfaces
+size_t max_serialized_size_zfc_interfaces__msg__CalibrationResult(
+  bool & full_bounded,
+  bool & is_plain,
+  size_t current_alignment);
+
+ROSIDL_TYPESUPPORT_FASTRTPS_C_PUBLIC_zfc_interfaces
+const rosidl_message_type_support_t *
+ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(rosidl_typesupport_fastrtps_c, zfc_interfaces, msg, CalibrationResult)();
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // ZFC_INTERFACES__MSG__DETAIL__CALIBRATION_RESULT__ROSIDL_TYPESUPPORT_FASTRTPS_C_H_

@@ -1,0 +1,22 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from zfc_interfaces/srv/ApplyCalibration.srv
+// generated code does not contain a copyright notice
+
+#include "zfc_interfaces/msg/CalibrationResult.idl"
+
+module zfc_interfaces {
+  module srv {
+    @verbatim (language="comment", text=
+      "Explicit reusable result loading; never changes installation calibration.")
+    struct ApplyCalibration_Request {
+      string result_file;
+    };
+    struct ApplyCalibration_Response {
+      boolean success;
+
+      string message;
+
+      zfc_interfaces::msg::CalibrationResult fit;
+    };
+  };
+};

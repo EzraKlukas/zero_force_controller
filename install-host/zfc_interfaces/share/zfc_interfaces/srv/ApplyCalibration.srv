@@ -1,0 +1,6 @@
+# Explicit reusable result loading; never changes installation calibration.
+string result_file
+---
+bool success
+string message
+zfc_interfaces/CalibrationResult fit

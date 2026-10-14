@@ -34,6 +34,7 @@ Jetson, from its user-supplied checkout root, with genuine IgH already available
 
 ```bash
 source /opt/ros/humble/setup.bash
+export ZFC_WITH_SIMULATION=0
 colcon --log-base log-jetson build --base-paths packages \
   --packages-select zfc_timing zfc_interfaces zfc_operator zfc_ethercat_core \
   zfc_ethercat_hardware zfc_zero_force_controller zfc_calibration_controller \
@@ -42,6 +43,25 @@ colcon --log-base log-jetson build --base-paths packages \
   --cmake-args -DBUILD_TESTING=ON -DZFC_HARDWARE_TESTS=ON -DZFC_PROFILING=OFF
 source "$PWD/install-jetson/setup.bash"
 ```
+
+Bringup's Gazebo dependencies are optional and disabled when
+`ZFC_WITH_SIMULATION` is unset or `0`; set `ZFC_WITH_SIMULATION=1` **before
+colcon/rosdep** for a simulation build including `zfc_simulation`. This is a
+package-manifest environment condition, not a `--cmake-args` switch. It does not
+select the launch backend: `backend:=gazebo` checks its packages/Fortress
+executable at launch and reports missing dependencies before starting processes.
+Hardware launch resolves no simulation package paths or simulation-only imports.
+
+The optional-dependency fix was checked in a fresh host overlay containing seven
+shared/bringup packages, with `zfc_simulation` discovered but unselected and absent
+from the sourced package registry. Bringup reported 41 tests: 37 passed and four
+Gazebo-runtime cases skipped as expected. Installed physical launch actions were
+constructed without execution; selecting Gazebo reported the missing helper
+before starting processes. With the simulator overlay sourced, all 26 launch/
+configuration tests and the existing headless Gazebo integration passed. Genuine
+IgH packages were excluded because the SDK is unavailable on this host; no
+physical activation or motion was executed. Build/test logs are under
+`/tmp/zfc-bringup-hardware-only-{build,tests}.log`.
 
 If IgH is outside standard discovery locations, supply the measured paths using
 `-DEtherCAT_INCLUDE_DIR=... -DEtherCAT_LIBRARY=...` or the existing
@@ -490,8 +510,8 @@ through it as part of this workflow.
 
 ### Development results
 
-The current host checkout builds nine offline packages excluding both EtherCAT
-packages. Final OFF and FINE suites each report **120 tests, zero errors,
+The operator-workflow baseline built nine offline packages excluding both EtherCAT
+packages. Its final OFF and FINE suites each reported **120 tests, zero errors,
 failures or skips**. The host-only `zfc_interfaces`/`zfc_operator` build/test
 reports **18 tests, zero failures**, without IgH/Gazebo discovery. Four existing
 profiling analysis tests and `git diff --check` pass. Test-only ROS domains and

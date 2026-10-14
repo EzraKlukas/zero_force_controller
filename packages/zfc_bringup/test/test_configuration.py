@@ -165,6 +165,10 @@ def test_launch_backend_time_and_gui_independence(backend, relay, plot):
         actions = module.build_physical_nodes(backend, str(share/'config/controllers.yaml'), str(share/'config/hardware.yaml'),
             str(share/'config/hardware_calibration.yaml'), relay=relay, plot=plot)
     else:
+        try:
+            module.gazebo_dependencies()
+        except RuntimeError as error:
+            pytest.skip('optional Gazebo runtime not built/sourced: '+str(error))
         actions = module.simulation_nodes(str(share/'config/controllers.yaml'), False, plot, .2, relay=relay)
     context = LaunchContext()
     nodes = [n for n in actions if isinstance(n, Node)]
@@ -204,3 +208,47 @@ def test_analysis_override_and_network_validation(tmp_path):
         module.analysis_node(False, analysis_file=str(custom))
     with pytest.raises(ValueError):
         network_actions('invalid')
+
+
+@pytest.mark.parametrize('enabled', [None, '0', '1'])
+def test_optional_simulation_manifest(enabled):
+    from catkin_pkg.package import parse_package
+    package = parse_package(str(ROOT/'package.xml'))
+    package.evaluate_conditions({} if enabled is None else {'ZFC_WITH_SIMULATION': enabled})
+    dependencies = {d.name for d in package.exec_depends if d.evaluated_condition}
+    simulation = {'zfc_simulation', 'gz_ros2_control', 'ros_gz_sim', 'ros_gz_bridge'}
+    assert (dependencies & simulation) == (simulation if enabled == '1' else set())
+    assert {'zfc_operator', 'zfc_calibration_analysis', 'zfc_ethercat_hardware'} <= dependencies
+
+
+def test_hardware_launch_never_resolves_simulation(monkeypatch):
+    from ament_index_python import packages
+    spec = importlib.util.spec_from_file_location('hardware_only_launch', ROOT/'launch/local.launch.py')
+    module = importlib.util.module_from_spec(spec)
+    original = packages.get_package_prefix
+    def hardware_prefix(name):
+        assert name not in ('zfc_simulation', 'gz_ros2_control', 'ros_gz_sim', 'ros_gz_bridge')
+        return original(name)
+    monkeypatch.setattr(packages, 'get_package_prefix', hardware_prefix)
+    spec.loader.exec_module(module)
+    nodes = module.build_physical_nodes('ethercat', str(ROOT/'config/controllers.yaml'),
+        str(ROOT/'config/hardware.yaml'), str(ROOT/'config/hardware_calibration.yaml'))
+    assert not any(n.node_package in ('zfc_simulation', 'ros_gz_sim', 'ros_gz_bridge') for n in nodes)
+
+
+@pytest.mark.parametrize('missing', ['zfc_simulation', 'gz_ros2_control', 'ros_gz_sim', 'ros_gz_bridge', 'ign'])
+def test_missing_gazebo_runtime_fails_before_nodes(monkeypatch, missing):
+    import shutil
+    from ament_index_python import packages
+    spec = importlib.util.spec_from_file_location('optional_gazebo_launch', ROOT/'launch/local.launch.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    def prefix(name):
+        if name == missing:
+            raise packages.PackageNotFoundError(name)
+        return '/unused/runtime'
+    monkeypatch.setattr(packages, 'get_package_prefix', prefix)
+    monkeypatch.setattr(shutil, 'which', lambda _: None if missing == 'ign' else '/unused/ign')
+    with pytest.raises(RuntimeError, match=missing) as error:
+        module.simulation_nodes('/unused/controllers.yaml', False, False, .2)
+    assert 'ZFC_WITH_SIMULATION=1' in str(error.value)
+    assert 'no backend processes were started' in str(error.value)

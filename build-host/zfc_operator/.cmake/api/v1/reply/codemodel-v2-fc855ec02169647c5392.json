@@ -1,0 +1,88 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-1c13d0894666f3d3aa56.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "zfc_operator",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_build_zfc_operator_egg::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_build_zfc_operator_egg-bb858b5846e9c3dcc4c3.json",
+					"name" : "ament_cmake_python_build_zfc_operator_egg",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_copy_zfc_operator::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_copy_zfc_operator-85e4b7baacc357dc389d.json",
+					"name" : "ament_cmake_python_copy_zfc_operator",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-afbaa8b4fa89531935e2.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_operator_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_operator_uninstall-fa891b7ec56a2d85cb43.json",
+					"name" : "zfc_operator_uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator",
+		"source" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/packages/zfc_operator"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

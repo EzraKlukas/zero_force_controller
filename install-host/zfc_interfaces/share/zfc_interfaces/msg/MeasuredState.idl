@@ -1,0 +1,33 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from zfc_interfaces/msg/MeasuredState.msg
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+#include "std_msgs/msg/Header.idl"
+
+module zfc_interfaces {
+  module msg {
+    @verbatim (language="comment", text=
+      "Visualization only: independent broadcaster samples, NOT synchronized capture." "\n"
+      "Header is the joint source time. Force retains its own source time.")
+    struct MeasuredState {
+      std_msgs::msg::Header header;
+
+      builtin_interfaces::msg::Time force_stamp;
+
+      double position_m;
+
+      double velocity_mps;
+
+      double force_n;
+
+      boolean joint_fresh;
+
+      boolean force_fresh;
+
+      boolean valid;
+
+      string detail;
+    };
+  };
+};

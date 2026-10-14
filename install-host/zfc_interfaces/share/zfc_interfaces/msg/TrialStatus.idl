@@ -1,0 +1,33 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from zfc_interfaces/msg/TrialStatus.msg
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+
+module zfc_interfaces {
+  module msg {
+    @verbatim (language="comment", text=
+      "Transient-local terminal status; independent of plotting delivery.")
+    struct TrialStatus {
+      builtin_interfaces::msg::Time stamp;
+
+      uint64 trial_id;
+
+      uint64 final_sequence;
+
+      uint64 dropped_samples;
+
+      uint64 failed_publication_samples;
+
+      uint8 phase;
+
+      uint8 fault_code;
+
+      boolean completed;
+
+      boolean successful;
+
+      boolean capture_complete;
+    };
+  };
+};

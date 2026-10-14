@@ -1,0 +1,23 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from zfc_interfaces/msg/PlotState.msg
+// generated code does not contain a copyright notice
+
+#include "std_msgs/msg/Header.idl"
+#include "zfc_interfaces/msg/ControllerState.idl"
+
+module zfc_interfaces {
+  module msg {
+    @verbatim (language="comment", text=
+      "Decimated visualization only. Original full-rate batches remain authoritative.")
+    struct PlotState {
+      std_msgs::msg::Header header;
+
+      zfc_interfaces::msg::ControllerState state;
+
+      @verbatim (language="comment", text=
+        "Reconstructed outside update from force - frozen baseline - residual." "\n"
+        "Meaningful only in compliant phase; zero in capture/calibration phases.")
+      double inertial_compensation_n;
+    };
+  };
+};

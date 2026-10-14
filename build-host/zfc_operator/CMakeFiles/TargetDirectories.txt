@@ -1,0 +1,11 @@
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/uninstall.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/zfc_operator_uninstall.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/ament_cmake_python_copy_zfc_operator.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/ament_cmake_python_build_zfc_operator_egg.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/test.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/edit_cache.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/rebuild_cache.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/list_install_components.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/install.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/install/local.dir
+/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_operator/CMakeFiles/install/strip.dir

@@ -1,0 +1,40 @@
+// generated from rosidl_adapter/resource/action.idl.em
+// with input from zfc_interfaces/action/RunCalibration.action
+// generated code does not contain a copyright notice
+
+#include "zfc_interfaces/msg/AnalysisState.idl"
+#include "zfc_interfaces/msg/CalibrationResult.idl"
+
+module zfc_interfaces {
+  module action {
+    @verbatim (language="comment", text=
+      "False unless explicitly requested. Successful fits are applied while inactive.")
+    struct RunCalibration_Goal {
+      boolean activate_zero_force_after;
+
+      @verbatim (language="comment", text=
+        "Physical operator affirmation for this trial and baseline/noise capture.")
+      boolean external_contact_clear;
+    };
+    struct RunCalibration_Result {
+      boolean success;
+
+      uint64 trial_id;
+
+      string trial_directory;
+
+      string message;
+
+      boolean applied;
+
+      boolean zero_force_active;
+
+      boolean stop_acknowledged;
+
+      zfc_interfaces::msg::CalibrationResult fit;
+    };
+    struct RunCalibration_Feedback {
+      zfc_interfaces::msg::AnalysisState state;
+    };
+  };
+};

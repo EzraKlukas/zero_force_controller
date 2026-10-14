@@ -1,0 +1,22 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from zfc_interfaces/msg/TelemetryBatch.msg
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+#include "zfc_interfaces/msg/ControllerState.idl"
+
+module zfc_interfaces {
+  module msg {
+    @verbatim (language="comment", text=
+      "Reliable capture stream; consumers must verify sequence continuity.")
+    struct TelemetryBatch {
+      builtin_interfaces::msg::Time stamp;
+
+      sequence<zfc_interfaces::msg::ControllerState, 256> samples;
+
+      uint64 dropped_samples;
+
+      uint64 failed_publication_samples;
+    };
+  };
+};

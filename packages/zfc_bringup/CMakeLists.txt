@@ -3,6 +3,9 @@ project(zfc_bringup LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake REQUIRED)
+# Gazebo is a runtime-only backend. package.xml enables its dependency graph
+# with ZFC_WITH_SIMULATION=1 in the colcon environment; no Gazebo SDK/package
+# lookup belongs in the default hardware CMake configuration.
 install(DIRECTORY config launch urdf worlds DESTINATION share/${PROJECT_NAME})
 # Compatibility install path, one source layout owned by zfc_operator.
 install(FILES ../zfc_operator/plot/stage.xml DESTINATION share/${PROJECT_NAME}/plot)

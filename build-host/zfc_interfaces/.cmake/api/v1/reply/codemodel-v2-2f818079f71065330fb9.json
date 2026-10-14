@@ -1,0 +1,258 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-5a7e31463d430d387b28.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						18
+					]
+				},
+				{
+					"build" : "zfc_interfaces__py",
+					"jsonFile" : "directory-zfc_interfaces__py-1f59621ba7aafc8d2d2e.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_interfaces/zfc_interfaces__py",
+					"targetIndexes" : 
+					[
+						5
+					]
+				},
+				{
+					"build" : "zfc_interfaces__rs",
+					"jsonFile" : "directory-zfc_interfaces__rs-46e17bfcbb6c90e6ef0d.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_interfaces/zfc_interfaces__rs",
+					"targetIndexes" : 
+					[
+						17
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1,
+						2
+					],
+					"name" : "zfc_interfaces",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_build_zfc_interfaces_egg::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_build_zfc_interfaces_egg-def09ea8b4e6585f8ab3.json",
+					"name" : "ament_cmake_python_build_zfc_interfaces_egg",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_copy_zfc_interfaces::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_copy_zfc_interfaces-19bf62bf55623fdc30d1.json",
+					"name" : "ament_cmake_python_copy_zfc_interfaces",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-6c7053826a1b5be09f94.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces-8718549b71d308da4fcc.json",
+					"name" : "zfc_interfaces",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__cpp-4f345fd25659be386a49.json",
+					"name" : "zfc_interfaces__cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "zfc_interfaces__py::@40a367399381ddb93881",
+					"jsonFile" : "target-zfc_interfaces__py-6a59cccafe7f6110e50c.json",
+					"name" : "zfc_interfaces__py",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_generator_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_generator_c-5aec0df8c9a70ad4cc90.json",
+					"name" : "zfc_interfaces__rosidl_generator_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_generator_py::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_generator_py-bfb8d02ad326686a6944.json",
+					"name" : "zfc_interfaces__rosidl_generator_py",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_c-4fb6fb04a9bb65e6bd17.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_c__pyext::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_c__pyext-bbc7edf77a89351e2c37.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_c__pyext",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_cpp-261e3f7a0ea6a3553285.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_fastrtps_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_fastrtps_c-7b8d34c6f61e63a1ce91.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_fastrtps_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_fastrtps_c__pyext::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_fastrtps_c__pyext-b8cf23da97ff3ace2f33.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_fastrtps_c__pyext",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_fastrtps_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_fastrtps_cpp-97fd497a76d2fdddc523.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_fastrtps_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_introspection_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_introspection_c-836aa85b059ace205a9b.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_introspection_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_introspection_c__pyext::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_introspection_c__pyext-8f599fbba35d1c60c18b.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_introspection_c__pyext",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces__rosidl_typesupport_introspection_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces__rosidl_typesupport_introspection_cpp-5d05ba5083b56018abb7.json",
+					"name" : "zfc_interfaces__rosidl_typesupport_introspection_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "zfc_interfaces__rs::@b3e6ddea408985a5ae60",
+					"jsonFile" : "target-zfc_interfaces__rs-bb5b046423a3314d06f0.json",
+					"name" : "zfc_interfaces__rs",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "zfc_interfaces_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-zfc_interfaces_uninstall-53ffe40ea4396a0f6def.json",
+					"name" : "zfc_interfaces_uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/build-host/zfc_interfaces",
+		"source" : "/home/ezraklukas/Documents/arbeit/ubckin/notes/ezra/resources/ros2_framework/zfc_impl/packages/zfc_interfaces"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

@@ -1,0 +1,15 @@
+# False unless explicitly requested. Successful fits are applied while inactive.
+bool activate_zero_force_after
+# Physical operator affirmation for this trial and baseline/noise capture.
+bool external_contact_clear
+---
+bool success
+uint64 trial_id
+string trial_directory
+string message
+bool applied
+bool zero_force_active
+bool stop_acknowledged
+zfc_interfaces/CalibrationResult fit
+---
+zfc_interfaces/AnalysisState state

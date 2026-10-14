@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from zfc_operator.fastdds_profile import main
+main()
