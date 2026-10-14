@@ -2,7 +2,8 @@ controller_manager:
   ros__parameters:
     use_sim_time: false
     hardware_components_initial_state:
-      unconfigured: [StageSystem]
+      unconfigured:
+      - StageSystem
     lock_memory: true
     thread_priority: 50
 zero_force_controller:

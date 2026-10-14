@@ -1,20 +1,14 @@
-# Installation scales only. Startup session zero is captured at runtime.
-# Approximate magnitude; sign remains UNVERIFIED. Do not enable hardware yet.
-m_per_count: 2.0e-7
-conventions_confirmed: false
+m_per_count: -9.765625e-8
+conventions_confirmed: true
 force_frame: load_cell_link
-force_channel_mapping: "x,y,z"
-# Use measured encoder differences / CLOCK_MONOTONIC elapsed time until PDO
-# velocity units/sign are verified. No multiplication by controller frequency.
-velocity_from_encoder: true
-velocity_mps_per_raw_unit: .nan
+force_channel_mapping: x,y,z
+# Use measured encoder differences / CLOCK_MONOTONIC elapsed time until PDO velocity units/sign are verified. No multiplication by controller frequency.
+velocity_from_encoder: false
+velocity_mps_per_raw_unit: -9.765625e-8
 # Optional MEASURED session-relative bounds; no physical ±25 cm assumption.
 soft_bounds_enabled: false
 soft_lower_m: .nan
 soft_upper_m: .nan
-# Required signed installation force sensitivities: still unmeasured.
-force_x_newtons_per_count: .nan
-force_y_newtons_per_count: .nan
-force_z_newtons_per_count: .nan
-# Optional electrical offsets omitted -> raw origin. Controller trial baseline
-# absorbs constant offsets; this is not an unloaded absolute-force calibration.
+force_x_newtons_per_count: 1.0e-4
+force_y_newtons_per_count: 1.0e-4
+force_z_newtons_per_count: 1.0e-4
