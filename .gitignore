@@ -5,10 +5,16 @@ build/
 
 # Local build and editor artifacts
 build/
+build-host/
+build-jetson/
 .cache/
 
 install/
+install-host/
+install-jetson/
 log/
+log-host/
+log-jetson/
 __pycache__/
 
 # Timing captures and generated analysis (retain schema/notebook/fixtures).

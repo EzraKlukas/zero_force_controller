@@ -1,1 +1,0 @@
-rclpy;zfc_interfaces;sensor_msgs;geometry_msgs;std_msgs;std_srvs;rcl_interfaces;controller_manager_msgs;action_msgs;lifecycle_msgs;launch_ros;ament_index_python;python3-pyqt5;plotjuggler;plotjuggler_ros;ament_cmake_pytest

@@ -1,3 +1,0 @@
-source;share/zfc_operator/environment/ament_prefix_path.sh
-source;share/zfc_operator/environment/path.sh
-source;share/zfc_operator/environment/pythonpath.sh

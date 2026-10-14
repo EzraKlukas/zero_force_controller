@@ -1,6 +1,0 @@
-setup.py
-zfc_interfaces/__init__.py
-zfc_interfaces.egg-info/PKG-INFO
-zfc_interfaces.egg-info/SOURCES.txt
-zfc_interfaces.egg-info/dependency_links.txt
-zfc_interfaces.egg-info/top_level.txt
