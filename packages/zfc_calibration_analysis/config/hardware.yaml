@@ -1,0 +1,31 @@
+# Deliberately NOT a commissioned physical analysis profile. Copy to an absolute
+# reviewed file and supply every criterion/convention. Zeros fail validation when
+# analysis_reviewed is enabled. Never copy simulation sign/tolerances blindly.
+calibration_analysis:
+  ros__parameters:
+    backend: ethercat
+    use_sim_time: false
+    known_downstream_mass_kg: -1.0  # unknown; persisted as null
+    installation_reviewed: false
+    controllers_reviewed: false
+    analysis_reviewed: false
+    coordinate_convention: ''
+    force_convention: ''
+    calibration_profile_id: ''
+    feedback_timeout_s: 0.0
+    stationary_velocity_mps: 0.0
+    expected_coefficient_sign: 0
+    maximum_gap_s: 0.0
+    minimum_acceleration_mps2: 0.0
+    maximum_acceleration_mps2: 0.0
+    plateau_settle_s: 0.0
+    plateau_end_guard_s: 0.0
+    reversal_guard_s: 0.0
+    minimum_plateau_samples: 0
+    minimum_plateaus_per_branch: 0
+    minimum_r_squared: 0.0
+    maximum_residual_rms_n: 0.0
+    maximum_branch_difference_fraction: 0.0
+    maximum_coefficient_kg: 0.0
+    maximum_tracking_error_m: 0.0
+    maximum_velocity_error_mps: 0.0

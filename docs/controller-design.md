@@ -1,5 +1,10 @@
 # SI controllers and trial contract — 8 October 2026
 
+Current non-RT operator/network/readiness additions are documented in
+[hardware-operator-workflow.md](hardware-operator-workflow.md). The controller
+logic, native hardware protections and historical verification records below
+are preserved; new physical operation still requires on-site commissioning.
+
 The asynchronous analysis node now reuses this capture/parameter contract; see
 [calibration-workflow.md](calibration-workflow.md) for actions, fitting evidence,
 application and failure/restart semantics. Neither C++ update state machine nor

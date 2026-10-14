@@ -137,11 +137,11 @@ def test_world_bridge_and_simulation_only_policy():
 
 
 def test_plot_layout_contract():
-    root = ET.parse(ROOT / "plot/stage.xml").getroot()
+    root = ET.parse(ROOT.parent / "zfc_operator/plot/stage.xml").getroot()
     plugin = root.find("Plugins/plugin")
     assert plugin.attrib["ID"] == "ROS2 Topic Subscriber"
     assert plugin.find("use_header_stamp").attrib["value"] == "true"
-    assert plugin.find("selected_topics").attrib["value"] == "/plot/zero_force;/plot/calibration;/calibration_analysis/state"
+    assert plugin.find("selected_topics").attrib["value"] == "/plot/measured;/plot/zero_force;/plot/calibration;/calibration_analysis/state"
     assert root.find("previouslyLoaded_Streamer").attrib["name"] == "ROS2 Topic Subscriber"
     plotted = {c.attrib["name"] for c in root.findall(".//Tab//curve")}
     assert root.find(".//plotmatrix") is None
@@ -149,3 +149,58 @@ def test_plot_layout_contract():
         assert f"/plot/{topic}/inertial_compensation_n" in plotted
         assert f"/plot/{topic}/state/reference_acceleration_mps2" in plotted
         assert f"/plot/{topic}/state/phase" in plotted
+
+
+@pytest.mark.parametrize('backend', ['ethercat', 'gazebo'])
+@pytest.mark.parametrize('relay,plot', [(False, False), (True, False), (True, True), (False, True)])
+def test_launch_backend_time_and_gui_independence(backend, relay, plot):
+    from ament_index_python.packages import get_package_share_directory
+    from launch import LaunchContext
+    from launch_ros.actions import Node
+    from launch_ros.utilities import evaluate_parameters
+    spec = importlib.util.spec_from_file_location('bringup_launch', ROOT/'launch/local.launch.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    share = Path(get_package_share_directory('zfc_bringup'))
+    if backend == 'ethercat':
+        actions = module.build_physical_nodes(backend, str(share/'config/controllers.yaml'), str(share/'config/hardware.yaml'),
+            str(share/'config/hardware_calibration.yaml'), relay=relay, plot=plot)
+    else:
+        actions = module.simulation_nodes(str(share/'config/controllers.yaml'), False, plot, .2, relay=relay)
+    context = LaunchContext()
+    nodes = [n for n in actions if isinstance(n, Node)]
+    packages = [n.node_package for n in nodes]
+    assert packages.count('zfc_calibration_analysis') == 1
+    assert sum(n.node_executable == 'plot_relay' for n in nodes) == int(relay)
+    if plot and not relay:
+        helper = next(n for n in nodes if n.node_executable == 'operator_panel')
+        assert evaluate_parameters(context, helper._Node__parameters)[0]['use_sim_time'] == (backend == 'gazebo')
+    assert packages.count('plotjuggler') == int(plot)
+    analysis = next(n for n in nodes if n.node_package == 'zfc_calibration_analysis')
+    evaluated = evaluate_parameters(context, analysis._Node__parameters)
+    assert evaluated[-1]['use_sim_time'] == (backend == 'gazebo')
+    if backend == 'ethercat':
+        assert 'zfc_simulation' not in packages and 'ros_gz_bridge' not in packages
+        assert 'known_downstream_mass_kg' not in evaluated[-1]
+        assert str(evaluated[0]).endswith('hardware.yaml')
+        manager = next(n for n in nodes if n.node_executable == 'ros2_control_node')
+        parameters = evaluate_parameters(context, manager._Node__parameters)[-1]
+        assert list(parameters['hardware_components_initial_state.unconfigured']) == ['StageSystem']
+        assert parameters['use_sim_time'] is False
+
+
+def test_analysis_override_and_network_validation(tmp_path):
+    from launch import LaunchContext
+    from launch_ros.utilities import evaluate_parameters
+    from zfc_operator.launch_helpers import network_actions
+    spec = importlib.util.spec_from_file_location('bringup_launch', ROOT/'launch/local.launch.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    custom = tmp_path/'reviewed.yaml'; custom.write_text('calibration_analysis: {ros__parameters: {backend: ethercat}}')
+    node = module.analysis_node(False, analysis_file=str(custom))
+    assert str(evaluate_parameters(LaunchContext(), node._Node__parameters)[0]) == str(custom)
+    with pytest.raises(RuntimeError, match='absolute'):
+        module.analysis_node(False, analysis_file='relative.yaml')
+    custom.write_text('calibration_analysis: {ros__parameters: {backend: gazebo}}')
+    with pytest.raises(RuntimeError, match='backend'):
+        module.analysis_node(False, analysis_file=str(custom))
+    with pytest.raises(ValueError):
+        network_actions('invalid')

@@ -224,12 +224,13 @@ work and have no hard realtime guarantee.
 
 ## Plotting and recording
 
-`plot:=true` opens PlotJuggler with installed `plot/stage.xml` and the installed
+`plot:=true` opens PlotJuggler with `zfc_operator`'s installed `plot/stage.xml` and the installed
 ROS2 plugins. Confirm **Start Streaming? -> Yes** and then the preselected
-`/plot/zero_force` and `/plot/calibration` topics with **Use header stamp** checked.
-The twelve named tabs cover measured/reference position and velocity, force/
+`/plot/measured`, `/plot/zero_force`, `/plot/calibration` and analysis-state topics with **Use header stamp** checked.
+The named tabs cover measured/reference position and velocity, force/
 baseline, residual/inertial compensation, effective reference acceleration,
-phase/progress for both controllers. No ROS distribution upgrade or
+phase/progress for both controllers, independent broadcaster measurements and
+analysis progress/result. No ROS distribution upgrade or
 pal_statistics dependency is needed; installed Humble headers do not contain
 REGISTER_ROS2_CONTROL_INTROSPECTION.
 
@@ -255,17 +256,26 @@ that is a limited smoke check, not an interactive GUI validation.
 | /simulation/ready | std_msgs/Bool, transient-local startup result, not a continuous health monitor |
 | /{controller}/telemetry | zfc_interfaces/TelemetryBatch, every control sample in <=256-sample batches drained by 20 ms wall timer, reliable |
 | /{controller}/trial_status | zfc_interfaces/TrialStatus, reliable transient-local terminal status |
-| /plot/{zero_force,calibration} | zfc_interfaces/PlotState, timestamp-decimated <=100 Hz per trial, plus idle measured preview before first activation |
+| /plot/measured | zfc_interfaces/MeasuredState, ~100 Hz wall decimation; independent joint/force source times and freshness |
+| /plot/{zero_force,calibration} | zfc_interfaces/PlotState, timestamp-decimated <=100 Hz per trial, plus broadcaster fallback after telemetry expires |
 
 PlotState has Header, original ControllerState in `state`, and
 `inertial_compensation_n = force - baseline - residual` outside update, meaningful
-only in valid compliant phase (zero otherwise). Idle previews are phase=0,
+only in valid compliant phase (NaN when unavailable). Idle previews are phase=0,
 trial=0, valid=false, with NaN references, not fabricated active commands.
 Plotting decimation never removes records from full-rate telemetry. ControllerState
 and TrialStatus fields/phases/reference semantics remain in
 [controller-design.md](controller-design.md). Sequence starts at **1**. Consumers
 must check continuity through final_sequence and loss/status fields; successful
 plotting alone is not capture acknowledgment or durable storage.
+
+The measured stream continues across controller changes and never claims motion.
+Backend-neutral helpers/layout are owned by `zfc_operator`; simulator force and
+readiness remain in `zfc_simulation`. The old installed bringup layout path and
+simulation relay executable remain compatibility paths. See
+[hardware-operator-workflow.md](hardware-operator-workflow.md) for separate host
+tools, independent relay enablement and networking; this page's numerical model
+and fit evidence remain simulation-only.
 
 `config/bridges.yaml` is explicit and one-way:
 Gazebo /clock -> ROS /clock (ignition.msgs.Clock);

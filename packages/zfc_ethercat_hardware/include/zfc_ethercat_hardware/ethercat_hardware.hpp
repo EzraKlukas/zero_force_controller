@@ -24,7 +24,7 @@ public:
   Result perform_command_mode_switch(const std::vector<std::string> &,
                                      const std::vector<std::string> &) override;
   Result prepare_command_mode_switch(const std::vector<std::string> &,
-                                    const std::vector<std::string> &) override;
+                                     const std::vector<std::string> &) override;
   Result read(const rclcpp::Time &, const rclcpp::Duration &) override;
   Result write(const rclcpp::Time &, const rclcpp::Duration &) override;
 

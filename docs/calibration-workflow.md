@@ -1,4 +1,14 @@
+---
+id: calibration-workflow
+aliases: []
+tags: []
+---
 # Simulated calibration workflow
+
+For the physical backend, reviewed installation/controller/analysis profiles,
+remote plotting and operator procedures, see
+[hardware-operator-workflow.md](hardware-operator-workflow.md). The simulation
+model/fit criteria and known mass below remain simulation evidence only.
 
 Two motion controllers retain their small allocation-free C++ logic headers:
 `calibration_sequencer_controller` runs trajectory/settling/hold;
@@ -29,9 +39,10 @@ ros2 launch zfc_bringup local.launch.py backend:=gazebo plot:=true
 
 Use gui:=false plot:=false unattended. Wait for SIMULATION_READY; only broadcasters
 activate automatically, both motion controllers remain inactive. Analysis starts
-idle in both launch paths using backend-appropriate time. Physical actions/applying
-are deliberately rejected pending commissioning; StageSystem remains unconfigured
-and all controllers inactive.
+idle in both launch paths using backend-appropriate time. Physical startup leaves
+StageSystem unconfigured and all controllers inactive. Physical operations now
+require reviewed profiles and actual lifecycle/feedback prerequisites; use the
+hardware operator workflow linked above before any preparation or motion.
 
 Source the same overlay/domain/partition in every terminal. Default goals apply a
 valid fit but DO NOT activate zero-force; sequencer retains stationary hold:
@@ -45,7 +56,7 @@ ros2 control list_controllers
 export ZFC_TRIAL_DIR=/tmp/zfc-calibration-trials/REPLACE_WITH_RETURNED_TRIAL_ID
 python3 -m json.tool "$ZFC_TRIAL_DIR/metadata.json"
 ros2 run zfc_calibration_analysis analyze_trial "$ZFC_TRIAL_DIR"
-ros2 control switch_controllers --strict --switch-timeout 5 \
+ros2 control switch_controllers --strict \
   --deactivate calibration_sequencer_controller --activate zero_force_controller
 ```
 

@@ -2,127 +2,163 @@
 #include "cycle_timing.hpp"
 #include "pluginlib/class_list_macros.hpp"
 namespace zfc_zero_force_controller {
-using Callback=controller_interface::CallbackReturn;
-using Result=controller_interface::return_type;
+using Callback = controller_interface::CallbackReturn;
+using Result = controller_interface::return_type;
 namespace {
 ZeroForceSettings settings(const Params &q) {
   ZeroForceSettings p;
-  p.bounds={q.excursion_limit_m,q.use_position_bounds,q.lower_position_m,q.upper_position_m};
-  p.stationary_velocity_mps=q.stationary_velocity_mps;
+  p.bounds = {q.excursion_limit_m, q.use_position_bounds, q.lower_position_m,
+              q.upper_position_m};
+  p.stationary_velocity_mps = q.stationary_velocity_mps;
 
-  p.hold_only=q.hold_only;
-  p.baseline_duration_s=q.baseline_duration_s; p.noise_duration_s=q.noise_duration_s;
-  p.acceleration_per_force=q.acceleration_per_force; p.force_response_sign=q.force_response_sign;
-  p.damping_per_s=q.damping_per_s; p.inertial_force_coefficient_kg=q.inertial_force_coefficient_kg;
-  p.noise_multiplier=q.noise_multiplier; p.minimum_deadband_n=q.minimum_deadband_n;
-  p.max_acceleration_mps2=q.max_acceleration_mps2; p.max_velocity_mps=q.max_velocity_mps;
-  p.max_force_n=q.max_force_n;
+  p.hold_only = q.hold_only;
+  p.baseline_duration_s = q.baseline_duration_s;
+  p.noise_duration_s = q.noise_duration_s;
+  p.acceleration_per_force = q.acceleration_per_force;
+  p.force_response_sign = q.force_response_sign;
+  p.damping_per_s = q.damping_per_s;
+  p.inertial_force_coefficient_kg = q.inertial_force_coefficient_kg;
+  p.noise_multiplier = q.noise_multiplier;
+  p.minimum_deadband_n = q.minimum_deadband_n;
+  p.max_acceleration_mps2 = q.max_acceleration_mps2;
+  p.max_velocity_mps = q.max_velocity_mps;
+  p.max_force_n = q.max_force_n;
   return p;
 }
-}
-controller_interface::InterfaceConfiguration ZeroForceController::command_interface_configuration() const {
-  return {controller_interface::interface_configuration_type::INDIVIDUAL,{joint_name_+"/position"}};
-}
-controller_interface::InterfaceConfiguration ZeroForceController::state_interface_configuration() const {
+} // namespace
+controller_interface::InterfaceConfiguration
+ZeroForceController::command_interface_configuration() const {
   return {controller_interface::interface_configuration_type::INDIVIDUAL,
-          {joint_name_+"/position",joint_name_+"/velocity",force_interface_}};
+          {joint_name_ + "/position"}};
+}
+controller_interface::InterfaceConfiguration
+ZeroForceController::state_interface_configuration() const {
+  return {
+      controller_interface::interface_configuration_type::INDIVIDUAL,
+      {joint_name_ + "/position", joint_name_ + "/velocity", force_interface_}};
 }
 Callback ZeroForceController::on_init() {
   try {
-    listener_=std::make_shared<ParamListener>(get_node());
-    const auto p=listener_->get_params();
-    joint_name_=p.joint_name; force_interface_=p.force_interface;
-    output_.finite_fault_hold=p.finite_fault_hold;
-    if (p.finite_fault_hold && !get_node()->get_parameter("use_sim_time").as_bool())
-      throw std::runtime_error("finite_fault_hold is simulation-only and requires use_sim_time");
-    if (joint_name_.empty() || joint_name_.find('/')!=std::string::npos ||
-        force_interface_.find('/')==std::string::npos || force_interface_.front()=='/' ||
-        force_interface_.back()=='/')
-      throw std::runtime_error("Require joint_name and force resource/interface names");
-    // Registered after listener: rclcpp invokes newest validation callback first.
-    guard_=get_node()->add_on_set_parameters_callback([this](const auto &) {
+    listener_ = std::make_shared<ParamListener>(get_node());
+    const auto p = listener_->get_params();
+    joint_name_ = p.joint_name;
+    force_interface_ = p.force_interface;
+    output_.finite_fault_hold = p.finite_fault_hold;
+    if (p.finite_fault_hold &&
+        !get_node()->get_parameter("use_sim_time").as_bool())
+      throw std::runtime_error(
+          "finite_fault_hold is simulation-only and requires use_sim_time");
+    if (joint_name_.empty() || joint_name_.find('/') != std::string::npos ||
+        force_interface_.find('/') == std::string::npos ||
+        force_interface_.front() == '/' || force_interface_.back() == '/')
+      throw std::runtime_error(
+          "Require joint_name and force resource/interface names");
+    // Registered after listener: rclcpp invokes newest validation callback
+    // first.
+    guard_ = get_node()->add_on_set_parameters_callback([this](const auto &) {
       rcl_interfaces::msg::SetParametersResult result;
-      result.successful=!active_.load(std::memory_order_acquire);
-      result.reason=result.successful ? "" : "Controller is active; deactivate before editing settings or trial ID";
+      result.successful = !active_.load(std::memory_order_acquire);
+      result.reason = result.successful ? ""
+                                        : "Controller is active; deactivate "
+                                          "before editing settings or trial ID";
       return result;
     });
-    telemetry_=std::make_unique<zfc::TelemetryPublisher>(get_node());
+    telemetry_ = std::make_unique<zfc::TelemetryPublisher>(get_node());
     return Callback::SUCCESS;
   } catch (const std::exception &e) {
-    RCLCPP_ERROR(get_node()->get_logger(),"%s",e.what());
+    RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
     return Callback::ERROR;
   }
 }
 Callback ZeroForceController::on_configure(const rclcpp_lifecycle::State &) {
   try {
     if (!settings(listener_->get_params()).valid())
-      throw std::runtime_error("Invalid finite SI settings, bounds or cross-parameter constraints");
+      throw std::runtime_error(
+          "Invalid finite SI settings, bounds or cross-parameter constraints");
     return Callback::SUCCESS;
   } catch (const std::exception &e) {
-    RCLCPP_ERROR(get_node()->get_logger(),"%s",e.what());
+    RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
     return Callback::ERROR;
   }
 }
 Callback ZeroForceController::on_activate(const rclcpp_lifecycle::State &) {
-  active_.store(true,std::memory_order_release);
+  active_.store(true, std::memory_order_release);
   try {
-    if (command_interfaces_.size()!=1 || state_interfaces_.size()!=3)
-      throw std::runtime_error("Require position command and position/velocity/force feedback");
-    const auto p=listener_->get_params(); // No listener access in update().
-    const zfc::Inputs in{state_interfaces_[0].get_value(),state_interfaces_[1].get_value(),
-                        state_interfaces_[2].get_value(),get_node()->now().nanoseconds(),1000000};
-    if (!logic_.activate(settings(p),in))
-      throw std::runtime_error("Activation requires finite stationary feedback and a valid excursion envelope");
-    const auto trial=p.trial_id==0 ? last_trial_+1 : static_cast<std::uint64_t>(p.trial_id);
-    if (trial<=last_trial_ || !telemetry_->begin(trial))
-      throw std::runtime_error("Trial ID must increase; await previous trial_status drain before reactivation");
-    last_trial_=trial;
-    write_command(in.position_m,in.position_m);
+    if (command_interfaces_.size() != 1 || state_interfaces_.size() != 3)
+      throw std::runtime_error(
+          "Require position command and position/velocity/force feedback");
+    const auto p = listener_->get_params(); // No listener access in update().
+    const zfc::Inputs in{state_interfaces_[0].get_value(),
+                         state_interfaces_[1].get_value(),
+                         state_interfaces_[2].get_value(),
+                         get_node()->now().nanoseconds(), 1000000};
+    if (!logic_.activate(settings(p), in))
+      throw std::runtime_error("Activation requires finite stationary feedback "
+                               "and a valid excursion envelope");
+    const auto trial = p.trial_id == 0 ? last_trial_ + 1
+                                       : static_cast<std::uint64_t>(p.trial_id);
+    if (trial <= last_trial_ || !telemetry_->begin(trial))
+      throw std::runtime_error("Trial ID must increase; await previous "
+                               "trial_status drain before reactivation");
+    last_trial_ = trial;
+    write_command(in.position_m, in.position_m);
     telemetry_->sample(logic_.snapshot());
     return Callback::SUCCESS;
   } catch (const std::exception &e) {
-    active_.store(false,std::memory_order_release);
-    if (command_interfaces_.size()==1 && state_interfaces_.size()==3) {
-      const bool finite=std::isfinite(state_interfaces_[0].get_value()) &&
-        std::isfinite(state_interfaces_[1].get_value()) &&
-        std::isfinite(state_interfaces_[2].get_value());
-      write_command(finite ? state_interfaces_[0].get_value() : NAN,state_interfaces_[0].get_value());
+    active_.store(false, std::memory_order_release);
+    if (command_interfaces_.size() == 1 && state_interfaces_.size() == 3) {
+      const bool finite = std::isfinite(state_interfaces_[0].get_value()) &&
+                          std::isfinite(state_interfaces_[1].get_value()) &&
+                          std::isfinite(state_interfaces_[2].get_value());
+      write_command(finite ? state_interfaces_[0].get_value() : NAN,
+                    state_interfaces_[0].get_value());
     }
-    RCLCPP_ERROR(get_node()->get_logger(),"%s",e.what());
+    RCLCPP_ERROR(get_node()->get_logger(), "%s", e.what());
     return Callback::ERROR;
   }
 }
 Callback ZeroForceController::on_deactivate(const rclcpp_lifecycle::State &) {
   if (!command_interfaces_.empty() && !state_interfaces_.empty()) {
-    const double actual=state_interfaces_[0].get_value();
-    const bool finite=state_interfaces_.size()==3 && std::isfinite(actual) &&
-      std::isfinite(state_interfaces_[1].get_value()) && std::isfinite(state_interfaces_[2].get_value());
-    write_command(logic_.snapshot().valid && finite ? actual : NAN,actual);
+    const double actual = state_interfaces_[0].get_value();
+    const bool finite = state_interfaces_.size() == 3 &&
+                        std::isfinite(actual) &&
+                        std::isfinite(state_interfaces_[1].get_value()) &&
+                        std::isfinite(state_interfaces_[2].get_value());
+    write_command(logic_.snapshot().valid && finite ? actual : NAN, actual);
   }
-  telemetry_->finish(false); // A completed trial's latched terminal state is retained.
+  telemetry_->finish(
+      false); // A completed trial's latched terminal state is retained.
   logic_.reset();
-  active_.store(false,std::memory_order_release);
+  active_.store(false, std::memory_order_release);
   return Callback::SUCCESS;
 }
-void ZeroForceController::write_command(double requested,double measured) noexcept {
+void ZeroForceController::write_command(double requested,
+                                        double measured) noexcept {
   double command;
-  if (output_.resolve(requested,measured,command)) command_interfaces_[0].set_value(command);
+  if (output_.resolve(requested, measured, command))
+    command_interfaces_[0].set_value(command);
 }
-Result ZeroForceController::update(const rclcpp::Time &time,const rclcpp::Duration &period) {
-  zfc::timing::Boundary probe(zfc::timing::controller_entry,zfc::timing::controller_exit);
-  ZFC_VALUE(zfc::timing::controller_active,1);
-  const zfc::Inputs in{state_interfaces_[0].get_value(),state_interfaces_[1].get_value(),
-                      state_interfaces_[2].get_value(),time.nanoseconds(),period.nanoseconds()};
+Result ZeroForceController::update(const rclcpp::Time &time,
+                                   const rclcpp::Duration &period) {
+  zfc::timing::Boundary probe(zfc::timing::controller_entry,
+                              zfc::timing::controller_exit);
+  ZFC_VALUE(zfc::timing::controller_active, 1);
+  const zfc::Inputs in{state_interfaces_[0].get_value(),
+                       state_interfaces_[1].get_value(),
+                       state_interfaces_[2].get_value(), time.nanoseconds(),
+                       period.nanoseconds()};
   zfc::Snapshot state;
   {
-    zfc::timing::Boundary calculate(zfc::timing::calculation_entry,zfc::timing::calculation_exit);
-    state=logic_.update(in);
+    zfc::timing::Boundary calculate(zfc::timing::calculation_entry,
+                                    zfc::timing::calculation_exit);
+    state = logic_.update(in);
   }
-  write_command(state.reference_position_m,in.position_m);
+  write_command(state.reference_position_m, in.position_m);
   telemetry_->sample(state); // Bounded preallocated queue; no ROS work here.
-  if (!state.valid || state.phase==zfc::Phase::complete)
-    telemetry_->finish(state.phase==zfc::Phase::complete && state.valid);
+  if (!state.valid || state.phase == zfc::Phase::complete)
+    telemetry_->finish(state.phase == zfc::Phase::complete && state.valid);
   return state.valid ? Result::OK : Result::ERROR;
 }
 } // namespace zfc_zero_force_controller
-PLUGINLIB_EXPORT_CLASS(zfc_zero_force_controller::ZeroForceController,controller_interface::ControllerInterface)
+PLUGINLIB_EXPORT_CLASS(zfc_zero_force_controller::ZeroForceController,
+                       controller_interface::ControllerInterface)

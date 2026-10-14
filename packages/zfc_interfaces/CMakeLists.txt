@@ -9,7 +9,7 @@ find_package(rclcpp REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ControllerState.msg" "msg/TelemetryBatch.msg" "msg/TrialStatus.msg" "msg/PlotState.msg"
   "msg/CalibrationResult.msg" "msg/AnalysisState.msg" "action/RunCalibration.action"
-  "srv/ApplyCalibration.srv"
+  "srv/ApplyCalibration.srv" "srv/OperatorCommand.srv" "msg/MeasuredState.msg"
   DEPENDENCIES builtin_interfaces std_msgs)
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 ament_export_include_directories(include/${PROJECT_NAME})

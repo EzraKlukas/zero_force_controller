@@ -1,18 +1,21 @@
 """Physical inactive startup or Fortress with a plugin-owned controller manager."""
 import os
 import math
+import hashlib
+import yaml
 from pathlib import Path
 import xacro
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable, ExecuteProcess, RegisterEventHandler, EmitEvent, LogInfo
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, ExecuteProcess, RegisterEventHandler, EmitEvent, LogInfo
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from zfc_operator.launch_helpers import network_actions, relay_node, plot_node, clock_node
 
 
-def build_physical_nodes(backend, controllers_file, hardware_file, calibration_file):
+def build_physical_nodes(backend, controllers_file, hardware_file, calibration_file, analysis_file='', relay=True, plot=False, rate=100.):
     # Check before expanding Xacro or constructing any physical process.
     if backend == "gazebo":
         raise RuntimeError("gazebo must use simulation_nodes; no physical manager was launched")
@@ -21,16 +24,22 @@ def build_physical_nodes(backend, controllers_file, hardware_file, calibration_f
     for path in (controllers_file, hardware_file, calibration_file):
         if not Path(path).is_absolute():
             raise RuntimeError("Controller, hardware, and calibration files must be absolute paths")
+    hardware_settings = yaml.safe_load(Path(hardware_file).read_text())
+    initial = hardware_settings.get('controller_manager', {}).get('ros__parameters', {}).get('hardware_components_initial_state', {})
+    if 'StageSystem' in initial.get('inactive', []):
+        raise RuntimeError('StageSystem must start unconfigured; remove it from the inactive startup list')
     share = Path(get_package_share_directory("zfc_bringup"))
     description = xacro.process_file(str(share / "urdf" / "stage.urdf.xacro"),
         mappings={"backend": backend, "controllers_file": controllers_file,
                   "hardware_calibration_file": calibration_file}).toxml()
     nodes = [
-        analysis_node(False),
+        analysis_node(False, analysis_file=analysis_file, physical_files={
+            'controllers_file': controllers_file, 'hardware_file': hardware_file, 'installation_file': calibration_file}),
         Node(package="robot_state_publisher", executable="robot_state_publisher",
-             output="screen", parameters=[{"robot_description": description}]),
+             output="screen", parameters=[{"robot_description": description, "use_sim_time": False}]),
         Node(package="controller_manager", executable="ros2_control_node",
-             output="screen", parameters=[controllers_file, hardware_file],
+             output="screen", parameters=[controllers_file, hardware_file, {'use_sim_time': False,
+                 'hardware_components_initial_state': {'unconfigured': ['StageSystem']}}],
              remappings=[("~/robot_description", "/robot_description")]),
     ]
     # Broadcasters, like motion, require explicit activation after valid data.
@@ -38,19 +47,36 @@ def build_physical_nodes(backend, controllers_file, hardware_file, calibration_f
                  "joint_state_broadcaster", "load_cell_broadcaster"):
         nodes.append(Node(package="controller_manager", executable="spawner",
             arguments=[name, "--inactive", "--controller-manager", "/controller_manager",
-                       "--controller-manager-timeout", "60"], output="screen"))
+                       "--controller-manager-timeout", "60"], parameters=[{'use_sim_time': False}], output="screen"))
+    if relay:
+        nodes.append(relay_node(False, rate, plot))
+    if plot:
+        nodes.append(plot_node())
+        if not relay:
+            nodes.append(clock_node(False))
     return nodes
 
 
-def analysis_node(simulation, tool_mass=.2):
+def analysis_node(simulation, tool_mass=.2, analysis_file='', physical_files=None):
     share = Path(get_package_share_directory('zfc_calibration_analysis'))
+    selected = analysis_file or str(share/('config/analysis.yaml' if simulation else 'config/hardware.yaml'))
+    if not Path(selected).is_absolute():
+        raise RuntimeError('analysis_file must be absolute')
+    configured = yaml.safe_load(Path(selected).read_text()).get('calibration_analysis', {}).get('ros__parameters', {})
+    if configured.get('backend', 'gazebo' if simulation else 'ethercat') != ('gazebo' if simulation else 'ethercat'):
+        raise RuntimeError('analysis_file backend must match the selected launch backend')
+    settings = {'use_sim_time': simulation, 'backend': 'gazebo' if simulation else 'ethercat'}
+    if simulation:
+        settings['known_downstream_mass_kg'] = tool_mass+.05
+    if physical_files:
+        for name, path in physical_files.items():
+            settings[name] = path
+            settings[name+'_sha256'] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
     return Node(package='zfc_calibration_analysis', executable='calibration_analysis',
-                parameters=[str(share/'config/analysis.yaml'),
-                            {'use_sim_time': simulation, 'backend': 'gazebo' if simulation else 'ethercat',
-                             'known_downstream_mass_kg': tool_mass+.05}], output='screen')
+                parameters=[selected, settings], output='screen')
 
 
-def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False):
+def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False, relay=True, rate=100., analysis_file=''):
     share = Path(get_package_share_directory("zfc_bringup"))
     if not Path(controllers_file).is_absolute():
         raise RuntimeError("controllers_file must be absolute")
@@ -89,7 +115,7 @@ def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False):
         if event.returncode != 0:
             return [EmitEvent(event=Shutdown(reason="Simulation startup gate/spawner failed"))]
         return []
-    actions = [server, analysis_node(True, tool_mass),
+    actions = [server, analysis_node(True, tool_mass, analysis_file),
         RegisterEventHandler(OnProcessExit(target_action=server,
             on_exit=[EmitEvent(event=Shutdown(reason="Gazebo server exited"))])),
         RegisterEventHandler(OnProcessExit(target_action=spawn, on_exit=after_spawn)),
@@ -99,15 +125,15 @@ def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False):
              parameters=[{"robot_description": description, "use_sim_time": True}], output="screen"),
         Node(package="ros_gz_bridge", executable="parameter_bridge",
              parameters=[{"config_file": str(share / "config/bridges.yaml"), "use_sim_time": True}],
-             output="screen"), spawn, startup,
-        Node(package="zfc_simulation", executable="plot_relay",
-             parameters=[{"use_sim_time": True, "configure_plotjuggler": plot}], output="screen")]
+             output="screen"), spawn, startup]
+    if relay:
+        actions.append(relay_node(True, rate, plot))
     if gui:
         actions.append(ExecuteProcess(cmd=["ign", "gazebo", "-g", "-v", "2"], output="screen"))
     if plot:
-        actions.append(Node(package="plotjuggler", executable="plotjuggler",
-            arguments=["--layout", str(share / "plot/stage.xml"),
-                       "--nosplash", "--disable_opengl"], output="screen"))
+        actions.append(plot_node())
+        if not relay:
+            actions.append(clock_node(True))
         actions.append(LogInfo(msg="PlotJuggler: confirm Start Streaming, then the preselected /plot topics with header stamps. Activate motion only after SIMULATION_READY."))
     if force_ui:
         actions.append(Node(package="zfc_simulation", executable="force_input",
@@ -118,25 +144,35 @@ def simulation_nodes(controllers_file, gui, plot, tool_mass, force_ui=False):
 def setup(context):
     values = {name: LaunchConfiguration(name).perform(context)
               for name in ("backend", "controllers_file", "hardware_file", "hardware_calibration_file")}
+    def boolean(name):
+        value = LaunchConfiguration(name).perform(context).lower()
+        if value not in ("true", "false"):
+            raise RuntimeError(name+" must be true or false")
+        return value == "true"
+    actions = network_actions(LaunchConfiguration('network_mode').perform(context))
+    rate = float(LaunchConfiguration('plot_rate_hz').perform(context))
+    if not math.isfinite(rate) or not 1 <= rate <= 1000:
+        raise RuntimeError('plot_rate_hz must be finite in [1,1000]')
+    analysis_file = LaunchConfiguration('analysis_file').perform(context)
     if values["backend"] == "gazebo":
-        def boolean(name):
-            value = LaunchConfiguration(name).perform(context).lower()
-            if value not in ("true", "false"):
-                raise RuntimeError(name+" must be true or false")
-            return value == "true"
-        return simulation_nodes(values["controllers_file"], boolean("gui"), boolean("plot"),
-                                float(LaunchConfiguration("tool_mass_kg").perform(context)), boolean("force_ui"))
-    return build_physical_nodes(values["backend"], values["controllers_file"],
-                                values["hardware_file"], values["hardware_calibration_file"])
+        return actions + simulation_nodes(values["controllers_file"], boolean("gui"), boolean("plot"),
+                                float(LaunchConfiguration("tool_mass_kg").perform(context)), boolean("force_ui"),
+                                boolean('relay'), rate, analysis_file)
+    return actions + build_physical_nodes(values["backend"], values["controllers_file"],
+                                values["hardware_file"], values["hardware_calibration_file"], analysis_file,
+                                boolean('relay'), boolean('plot'), rate)
 
 
 def generate_launch_description():
     share = Path(get_package_share_directory("zfc_bringup"))
     return LaunchDescription([
-        SetEnvironmentVariable("ROS_LOCALHOST_ONLY", "1"),
+        DeclareLaunchArgument('network_mode', default_value='inherit'),
         DeclareLaunchArgument("backend", default_value="ethercat"),
         DeclareLaunchArgument("gui", default_value="true"),
         DeclareLaunchArgument("plot", default_value="false"),
+        DeclareLaunchArgument('relay', default_value='true'),
+        DeclareLaunchArgument('plot_rate_hz', default_value='100.0'),
+        DeclareLaunchArgument('analysis_file', default_value=''),
         DeclareLaunchArgument("force_ui", default_value="false"),
         DeclareLaunchArgument("tool_mass_kg", default_value="0.2"),
         DeclareLaunchArgument("controllers_file", default_value=str(share / "config" / "controllers.yaml")),

@@ -9,3 +9,6 @@ uint64 final_sequence
 bool stop_acknowledged
 string detail
 zfc_interfaces/CalibrationResult fit
+string backend
+bool operation_pending
+string trial_directory

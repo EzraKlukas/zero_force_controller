@@ -22,14 +22,17 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter, parameter_value_to_python
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from rclpy.task import Future
-from controller_manager_msgs.srv import ListControllers, SwitchController, ConfigureController
+from controller_manager_msgs.srv import ListControllers, SwitchController, ConfigureController, ListHardwareComponents, SetHardwareComponentState
+from lifecycle_msgs.msg import State
+from geometry_msgs.msg import WrenchStamped
 from rcl_interfaces.srv import GetParameters, ListParameters, SetParametersAtomically
 from rcl_interfaces.msg import ParameterDescriptor
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float64, Header
 from zfc_interfaces.action import RunCalibration
 from zfc_interfaces.msg import TelemetryBatch, TrialStatus, AnalysisState, CalibrationResult
-from zfc_interfaces.srv import ApplyCalibration
+from zfc_interfaces.srv import ApplyCalibration, OperatorCommand
+from .backends import reviewed_profiles, active_stage
 from .analysis import Capture, Criteria, Fit, reserve_trial, save_trial, save_application, SOURCE
 
 
@@ -41,11 +44,19 @@ def fit_message(fit):
     return CalibrationResult(**asdict(fit))
 
 
-def read_result(path, criteria):
+def read_result(path, criteria, provenance=None):
     data = yaml.safe_load(Path(path).read_text())
     if data.get('schema_version') != 1 or data.get('units', {}).get('inertial_force_coefficient_kg') != 'kg':
         raise ValueError('unsupported result schema/units')
     fit = Fit(**data['fit'])
+    if provenance is not None:
+        saved = data.get('provenance', {})
+        if saved.get('backend') != provenance['backend'] or saved.get('acceleration_source') != SOURCE:
+            raise ValueError('saved result backend/acceleration meaning mismatch')
+        if saved.get('model') != provenance['model']:
+            raise ValueError('saved result coordinate/force conventions or calibration profile mismatch')
+        if data.get('units', {}).get('intercept_n') != 'N':
+            raise ValueError('saved result force units mismatch')
     if not fit.valid or fit.acceleration_source != SOURCE:
         raise ValueError('result is invalid or uses a different acceleration source')
     values = asdict(fit)
@@ -68,32 +79,53 @@ class CalibrationAnalysis(Node):
         super().__init__('calibration_analysis')
         self.group = ReentrantCallbackGroup()
         self.wall_clock = Clock(clock_type=ClockType.STEADY_TIME)
+        backend = self.declare_parameter('backend', 'gazebo', ParameterDescriptor(read_only=True)).value
         defaults = dict(backend='gazebo', controller_manager='/controller_manager',
                         calibration_controller='calibration_sequencer_controller',
                         zero_force_controller='zero_force_controller', output_directory='/tmp/zfc-calibration-trials',
                         service_timeout_s=8., capture_timeout_s=120., drain_timeout_s=8.,
-                        baseline_timeout_s=15., maximum_samples=120000, known_downstream_mass_kg=.25)
+                        baseline_timeout_s=15., maximum_samples=120000, known_downstream_mass_kg=.25,
+                        installation_reviewed=False, controllers_reviewed=False, analysis_reviewed=False,
+                        installation_file='', controllers_file='', hardware_file='',
+                        installation_file_sha256='', controllers_file_sha256='', hardware_file_sha256='',
+                        coordinate_convention='', force_convention='', calibration_profile_id='',
+                        feedback_timeout_s=.5, stationary_velocity_mps=.001)
         defaults.update(asdict(Criteria()))
+        if backend == 'ethercat':
+            # Even a custom/incomplete override cannot inherit simulation fit
+            # sign/tolerances or a fictitious mass. A reviewed profile supplies
+            # every criterion and both physical freshness/stationary thresholds.
+            defaults.update({name: type(value)(0) for name, value in asdict(Criteria()).items()})
+            defaults.update(known_downstream_mass_kg=-1., feedback_timeout_s=0., stationary_velocity_mps=0.)
         for name, value in defaults.items():
-            self.declare_parameter(name, value, ParameterDescriptor(read_only=True))
+            if name != 'backend':
+                self.declare_parameter(name, value, ParameterDescriptor(read_only=True))
         self.settings = {name: self.get_parameter(name).value for name in defaults}
         self.criteria = Criteria(**{name: self.settings[name] for name in asdict(Criteria())})
-        self.criteria.validate()
+        if self.settings['backend'] == 'gazebo' or self.settings['analysis_reviewed']:
+            self.criteria.validate()
         if self.settings['backend'] not in ('gazebo', 'ethercat'):
             raise ValueError('backend must be gazebo or ethercat')
         if self.settings['maximum_samples'] < 2 or any(not math.isfinite(self.settings[k]) or self.settings[k] <= 0 for k in ('service_timeout_s', 'capture_timeout_s', 'drain_timeout_s', 'baseline_timeout_s')):
             raise ValueError('positive finite deadlines and bounded capacity required')
         if not Path(self.settings['output_directory']).is_absolute():
             raise ValueError('output_directory must be absolute')
-        if not math.isfinite(self.settings['known_downstream_mass_kg']) or not 0 < self.settings['known_downstream_mass_kg'] <= 10.05:
+        if self.settings['backend'] == 'gazebo' and (not math.isfinite(self.settings['known_downstream_mass_kg']) or not 0 < self.settings['known_downstream_mass_kg'] <= 10.05):
             raise ValueError('known simulation downstream mass must be finite and positive')
+        if self.settings['backend'] == 'ethercat' and self.get_parameter('use_sim_time').value:
+            raise ValueError('physical analysis requires use_sim_time=false')
+        if (backend == 'gazebo' or self.settings['analysis_reviewed']) and any(not math.isfinite(self.settings[k]) or self.settings[k] <= 0 for k in ('feedback_timeout_s', 'stationary_velocity_mps')):
+            raise ValueError('review positive finite feedback/stationary thresholds')
         self.cal, self.zero = self.settings['calibration_controller'], self.settings['zero_force_controller']
         manager = self.settings['controller_manager'].rstrip('/')
         self.list_client = self.create_client(ListControllers, manager+'/list_controllers', callback_group=self.group)
         self.switch_client = self.create_client(SwitchController, manager+'/switch_controller', callback_group=self.group)
         self.configure_client = self.create_client(ConfigureController, manager+'/configure_controller', callback_group=self.group)
+        self.hardware_client = self.create_client(ListHardwareComponents, manager+'/list_hardware_components', callback_group=self.group)
+        self.hardware_set_client = self.create_client(SetHardwareComponentState, manager+'/set_hardware_component_state', callback_group=self.group)
+        self.manager_parameters = self.create_client(GetParameters, manager+'/get_parameters', callback_group=self.group)
         self.parameter_clients = {}
-        for controller in (self.cal, self.zero):
+        for controller in (self.cal, self.zero, 'joint_state_broadcaster', 'load_cell_broadcaster'):
             self.parameter_clients[controller] = {
                 'get': self.create_client(GetParameters, '/'+controller+'/get_parameters', callback_group=self.group),
                 'list': self.create_client(ListParameters, '/'+controller+'/list_parameters', callback_group=self.group),
@@ -111,6 +143,8 @@ class CalibrationAnalysis(Node):
         self.progress = 0.
         self.fit = Fit()
         self.stop_acknowledged = True
+        if backend == 'ethercat':
+            self.stop_acknowledged = False # Startup is not a physical stop acknowledgment.
         self.ready = False
         self.force_enabled = None
         self.force_enabled_received = 0.
@@ -118,15 +152,28 @@ class CalibrationAnalysis(Node):
         self.force_received = 0.
         self.force_desired = None
         self.joint = None
+        self.joint_stamp = None
+        self.sensor_force = None
+        self.sensor_force_stamp = None
+        self.zero_received = 0.
+        self.calibration_terminal = None
+        self.calibration_latest_trial = 0
+        self.profile = None
+        self.trial_directory = ''
+        if self.settings['backend'] == 'ethercat':
+            self.detail = 'StageSystem starts unconfigured; review installation/controller/analysis profiles, then explicitly Prepare hardware. No motion starts at launch.'
         self.zero_sample = None
         self.last_clock_ns = 0
         self.time_error = ''
         self.status_publisher = self.create_publisher(AnalysisState, '~/state', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
-        self.force_publisher = self.create_publisher(Bool, '/simulation/force_enable', 10)
-        self.create_subscription(Bool, '/simulation/ready', lambda m: setattr(self, 'ready', m.data), QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=self.group)
-        self.create_subscription(Bool, '/simulation/force_enabled', self.force_ack, 10, callback_group=self.group)
-        self.create_subscription(Float64, '/simulation/applied_force', self.force_value, 10, callback_group=self.group)
-        self.create_subscription(JointState, '/joint_states', self.joints, 10, callback_group=self.group)
+        if self.settings['backend'] == 'gazebo':
+            self.force_publisher = self.create_publisher(Bool, '/simulation/force_enable', 10)
+            self.create_subscription(Bool, '/simulation/ready', lambda m: setattr(self, 'ready', m.data), QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=self.group)
+            self.create_subscription(Bool, '/simulation/force_enabled', self.force_ack, 10, callback_group=self.group)
+            self.create_subscription(Float64, '/simulation/applied_force', self.force_value, 10, callback_group=self.group)
+        from rclpy.qos import qos_profile_sensor_data
+        self.create_subscription(JointState, '/joint_states', self.joints, qos_profile_sensor_data, callback_group=self.group)
+        self.create_subscription(WrenchStamped, '/load_cell_broadcaster/wrench', self.sensor_forces, qos_profile_sensor_data, callback_group=self.group)
         self.create_subscription(TelemetryBatch, '/'+self.cal+'/telemetry', self.batch, 200, callback_group=self.group)
         self.create_subscription(TelemetryBatch, '/'+self.zero+'/telemetry', self.zero_batch, 200, callback_group=self.group)
         self.create_subscription(TrialStatus, '/'+self.cal+'/trial_status', self.terminal, QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=self.group)
@@ -134,6 +181,7 @@ class CalibrationAnalysis(Node):
                                    goal_callback=self.goal, cancel_callback=lambda _: CancelResponse.ACCEPT,
                                    callback_group=self.group)
         self.create_service(ApplyCalibration, '~/apply_result', self.apply_service, callback_group=self.group)
+        self.create_service(OperatorCommand, '~/operator_command', self.operator_command, callback_group=self.group)
         self.create_timer(.1, self.tick, clock=self.wall_clock, callback_group=self.group)
         self.goal_handle = None
 
@@ -144,12 +192,25 @@ class CalibrationAnalysis(Node):
         self.applied_force, self.force_received = m.data, time.monotonic()
 
     def joints(self, m):
-        if 'carriage' in m.name:
+        self.joint = None
+        if m.name.count('carriage') == 1 and len(set(m.name)) == len(m.name):
             index = m.name.index('carriage')
-            if len(m.position) > index and len(m.velocity) > index:
+            stamp = m.header.stamp.sec*1000000000+m.header.stamp.nanosec
+            valid_time = self.joint_stamp is None or stamp > self.joint_stamp
+            self.joint_stamp = stamp
+            if len(m.position) == len(m.name) and len(m.velocity) == len(m.name) and (valid_time or self.settings['backend'] == 'gazebo'):
                 self.joint = (m.position[index], m.velocity[index], time.monotonic())
 
+    def sensor_forces(self, m):
+        stamp = m.header.stamp.sec*1000000000+m.header.stamp.nanosec
+        valid_time = self.sensor_force_stamp is None or stamp > self.sensor_force_stamp
+        self.sensor_force_stamp = stamp
+        values = (m.wrench.force.x, m.wrench.force.y, m.wrench.force.z)
+        self.sensor_force = (values, time.monotonic()) if valid_time and all(math.isfinite(v) for v in values) else None
+
     def batch(self, m):
+        if m.samples:
+            self.calibration_latest_trial = max(self.calibration_latest_trial, *(s.trial_id for s in m.samples))
         if not self.capture_armed:
             for sample in m.samples:
                 self.known_old_trials.add(sample.trial_id)
@@ -165,9 +226,12 @@ class CalibrationAnalysis(Node):
     def zero_batch(self, m):
         if m.samples:
             self.zero_sample = m.samples[-1]
+            self.zero_received = time.monotonic()
             self.last_trial = max(self.last_trial, self.zero_sample.trial_id)
 
     def terminal(self, m):
+        if self.calibration_terminal is None or m.trial_id >= self.calibration_terminal.trial_id:
+            self.calibration_terminal = m
         self.last_trial = max(self.last_trial, m.trial_id)
         if self.capture_armed and m.trial_id == self.capture.trial_id:
             self.capture.finish(m)
@@ -179,10 +243,11 @@ class CalibrationAnalysis(Node):
         if self.busy and self.last_clock_ns and now < self.last_clock_ns:
             self.time_error = 'ROS/simulation clock moved backwards; restart full session'
         self.last_clock_ns = now
-        if self.force_desired is not None:
+        if self.settings['backend'] == 'gazebo' and self.force_desired is not None:
             self.force_publisher.publish(Bool(data=self.force_desired))
         stages = ['idle', 'preparing', 'stopping', 'recording', 'draining', 'analyzing', 'applying', 'baseline', 'complete', 'canceled', 'failed']
         state = AnalysisState(header=Header(stamp=self.get_clock().now().to_msg()), trial_id=self.capture.trial_id if self.capture else 0,
+                              backend=self.settings['backend'], operation_pending=self.busy, trial_directory=self.trial_directory,
                               stage=self.stage, stage_code=stages.index(self.stage), progress=self.progress, detail=self.detail,
                               recorded_samples=len(self.capture.rows) if self.capture else 0,
                               dropped_samples=self.capture.dropped if self.capture else 0,
@@ -208,6 +273,8 @@ class CalibrationAnalysis(Node):
             raise Interrupted(self.time_error)
         if self.capture_armed and self.capture.error:
             raise Interrupted(self.capture.error)
+        if self.settings['backend'] == 'ethercat' and self.stage in ('recording', 'draining', 'analyzing', 'applying', 'baseline') and not self.physical_feedback():
+            raise Interrupted('fresh finite physical joint/force SI feedback lost')
         if self.stage in ('recording', 'draining', 'analyzing', 'applying', 'baseline') and self.force_desired is False and not self.force_is(False):
             raise Interrupted('force interlock or applied-force freshness lost')
         if self.stage in ('analyzing', 'applying') and not self.stationary():
@@ -237,11 +304,16 @@ class CalibrationAnalysis(Node):
             self.check()
         return result
 
-    async def states(self, checked=True):
+    async def states(self, checked=True, verify_ownership=True):
         response = await self.call(self.list_client, ListControllers.Request(), checked)
         states = {c.name: c.state for c in response.controller}
         if self.cal not in states or self.zero not in states:
             raise Interrupted('both configured motion controllers are required')
+        if self.settings['backend'] == 'ethercat' and verify_ownership:
+            owners = [c for c in response.controller if 'carriage/position' in c.claimed_interfaces]
+            active = [n for n in (self.cal, self.zero) if states[n] == 'active']
+            if len(active) > 1 or sorted(c.name for c in owners) != sorted(active):
+                raise Interrupted('position command ownership does not match motion controller states')
         return states
 
     async def switch(self, activate=(), deactivate=(), checked=True):
@@ -257,10 +329,10 @@ class CalibrationAnalysis(Node):
 
     async def stop(self):
         self.stage = 'stopping'
-        self.force_desired = False
+        self.force_desired = False if self.settings['backend'] == 'gazebo' else None
         self.stop_acknowledged = False
         # Even after cancellation/bad data, services and subscriptions stay live.
-        states = await self.states(False)
+        states = await self.states(False, verify_ownership=False)
         active = [n for n in (self.cal, self.zero) if states[n] == 'active']
         if active:
             await self.switch(deactivate=active, checked=False)
@@ -277,18 +349,36 @@ class CalibrationAnalysis(Node):
         states = await self.states(False)
         if any(states[n] != 'inactive' for n in (self.cal, self.zero)):
             raise Interrupted('motion inactive state could not be verified')
-        await self.wait(lambda: self.stationary() and self.force_is(False), self.settings['service_timeout_s'], 'stationary inactive/force-disabled acknowledgment', False)
+        reason = 'stationary inactive motion and fresh SI feedback; drive holding' if self.settings['backend'] == 'ethercat' else 'stationary inactive/force-disabled acknowledgment'
+        await self.wait(lambda: self.stationary() and self.force_is(False), self.settings['service_timeout_s'], reason, False)
         # A second checked list guards against a delayed preceding service reply.
         await self.sleep(.1)
         states = await self.states(False)
         if any(states[n] != 'inactive' for n in (self.cal, self.zero)):
             raise Interrupted('late controller activation detected during cleanup')
+        if self.settings['backend'] == 'ethercat':
+            stage = active_stage(await self.call(self.hardware_client, ListHardwareComponents.Request(), False))
+            if any(i.is_claimed for i in stage.command_interfaces) or not self.stationary():
+                raise Interrupted('fresh stationary physical feedback/unclaimed commands unavailable during stop verification')
         self.stop_acknowledged = True
 
     def stationary(self):
-        return self.joint is not None and time.monotonic()-self.joint[2] < .5 and all(math.isfinite(v) for v in self.joint[:2]) and abs(self.joint[1]) < .001
+        return self.joint is not None and time.monotonic()-self.joint[2] < self.settings['feedback_timeout_s'] and all(math.isfinite(v) for v in self.joint[:2]) and abs(self.joint[1]) < self.settings['stationary_velocity_mps'] and (self.settings['backend'] == 'gazebo' or self.physical_feedback())
+
+    def physical_feedback(self):
+        now, ros_ns = time.monotonic(), self.get_clock().now().nanoseconds
+        timeout = self.settings['feedback_timeout_s']
+        return bool(self.joint is not None and self.sensor_force is not None and
+                    now-self.joint[2] < timeout and now-self.sensor_force[1] < timeout and
+                    all(math.isfinite(v) for v in self.joint[:2]) and
+                    self.joint_stamp is not None and self.sensor_force_stamp is not None and
+                    0 <= ros_ns-self.joint_stamp < timeout*1e9 and 0 <= ros_ns-self.sensor_force_stamp < timeout*1e9)
 
     def force_is(self, enabled):
+        if self.settings['backend'] == 'ethercat':
+            # No simulation ack and no inference of contact from support/gravity.
+            # Operator affirmation is checked for each motion request separately.
+            return self.physical_feedback()
         now = time.monotonic()
         return self.force_enabled == enabled and now-self.force_enabled_received < .5 and now-self.force_received < .5 and self.applied_force is not None and math.isfinite(self.applied_force) and abs(self.applied_force) < 1e-9
 
@@ -307,8 +397,171 @@ class CalibrationAnalysis(Node):
         if not response.result.successful:
             raise Interrupted('atomic parameter application rejected: '+response.result.reason)
 
+    async def review_configuration(self):
+        if self.settings['backend'] != 'ethercat':
+            return
+        self.profile = await self.worker_result(self.submit_worker(reviewed_profiles, self.settings))
+        self.criteria.validate()
+        manager_clock = await self.call(self.manager_parameters, GetParameters.Request(names=['use_sim_time']))
+        if len(manager_clock.values) != 1 or parameter_value_to_python(manager_clock.values[0]) is not False:
+            raise Interrupted('physical controller manager requires use_sim_time=false')
+        for name in ('joint_state_broadcaster', 'load_cell_broadcaster'):
+            snapshot = await self.parameter_snapshot(name)
+            if snapshot.get('use_sim_time') is not False:
+                raise Interrupted(name+' requires use_sim_time=false for physical feedback')
+            expected = dict(self.profile['controller_configuration'][name]['ros__parameters'])
+            expected.update(self.profile['hardware_configuration'].get(name, {}).get('ros__parameters', {}))
+            def flatten(parameters, prefix=''):
+                for key, value in parameters.items():
+                    path = prefix+key
+                    if isinstance(value, dict):
+                        yield from flatten(value, path+'.')
+                    else:
+                        yield path, value
+            if any(snapshot.get(key) != value for key, value in flatten(expected)):
+                raise Interrupted(name+' differs from reviewed sensor name/interface/frame settings')
+        # Check actual inactive node settings against the files used at launch,
+        # including the physical time/NaN policy. File review alone is insufficient.
+        for name in (self.cal, self.zero):
+            actual = await self.parameter_snapshot(name)
+            expected = dict(self.profile['controller_configuration'][name]['ros__parameters'])
+            expected.update(self.profile['hardware_configuration'].get(name, {}).get('ros__parameters', {}))
+            for key, value in expected.items():
+                if key not in ('trial_id', 'inertial_force_coefficient_kg') and actual.get(key) != value:
+                    raise Interrupted(name+' differs from reviewed setting '+key)
+            if actual.get('use_sim_time') is not False or actual.get('finite_fault_hold') is not False:
+                raise Interrupted(name+' requires physical clock and NaN fault policy')
+
+    async def readiness(self, external_contact_clear=False):
+        if self.settings['backend'] == 'gazebo':
+            self.force_desired = False
+            await self.wait(lambda: self.ready and self.force_is(False), self.settings['service_timeout_s'], 'simulation ready and force interlock')
+            return
+        await self.review_configuration()
+        if not external_contact_clear:
+            raise Interrupted('Clear external contact and affirm it for this request; sensor support/gravity readings cannot prove no human contact. Keep contact clear during calibration and fresh baseline/noise capture.')
+        active_stage(await self.call(self.hardware_client, ListHardwareComponents.Request()))
+        states = await self.states()
+        if any(states.get(n) != 'active' for n in ('joint_state_broadcaster', 'load_cell_broadcaster')):
+            raise Interrupted('activate both sensor broadcasters using Prepare hardware first')
+        await self.wait(self.stationary, self.settings['service_timeout_s'], 'fresh finite stationary physical SI feedback')
+
+    def model_metadata(self):
+        if self.settings['backend'] == 'gazebo':
+            return {'sensor_frame': 'load_cell_link +X upward', 'force_path': 'parent_to_child, child frame',
+                    'known_downstream_mass_kg': self.settings['known_downstream_mass_kg'],
+                    'session_coordinate': 'known simulated mid-travel startup; not hardware lower stop'}
+        mass = self.settings['known_downstream_mass_kg']
+        return {'sensor_frame': 'load_cell_link', 'force_path': self.settings['force_convention'],
+                'known_downstream_mass_kg': mass if math.isfinite(mass) and mass > 0 else None,
+                'session_coordinate': self.settings['coordinate_convention'],
+                'calibration_profile': self.profile,
+                'external_contact': 'operator affirmed clear; not inferred from sensor readings'}
+
+    async def start_zero(self, trial, deactivate=()):
+        self.stage, self.detail = 'baseline', 'Keep external contact clear; STRICT handoff and fresh baseline/noise capture'
+        parameters = await self.parameter_snapshot(self.zero)
+        if parameters.get('hold_only') is not False:
+            raise Interrupted('zero-force compliance requires reviewed hold_only=false')
+        await self.set_parameters(self.zero, trial_id=trial)
+        self.zero_sample = None
+        await self.switch(activate=[self.zero], deactivate=deactivate)
+        await self.wait(lambda: self.zero_sample is not None and self.zero_sample.trial_id == trial and self.zero_sample.phase in (3, 5),
+                        self.settings['baseline_timeout_s'], 'zero-force baseline/noise completion')
+        if not self.zero_sample.valid or self.zero_sample.phase != 3 or time.monotonic()-self.zero_received >= self.settings['feedback_timeout_s']:
+            raise Interrupted('zero-force activation/baseline fault or stale telemetry')
+        if not self.force_is(False):
+            raise Interrupted('feedback/interlock lost during baseline capture')
+        if self.settings['backend'] == 'gazebo':
+            self.force_desired = True
+            await self.wait(lambda: self.force_is(True), self.settings['service_timeout_s'], 'released force re-enable acknowledgment')
+        self.force_desired = None
+
+    async def operator_command(self, request, response):
+        if self.busy or self.unresolved_stop or not self.file_job.done():
+            response.message = 'operation pending or STOP UNVERIFIED; no automatic restart'
+            return response
+        if request.command not in ('prepare', 'observe', 'start_zero_force'):
+            response.message = 'command must be prepare, observe, or start_zero_force'
+            return response
+        self.busy = True
+        self.time_error = ''
+        self.goal_handle = None
+        try:
+            self.stage = 'preparing'
+            if request.command == 'prepare':
+                if self.settings['backend'] != 'ethercat':
+                    raise Interrupted('Prepare hardware is physical-only; Gazebo has its own startup gate')
+                self.detail = 'validating reviewed profiles before standard StageSystem lifecycle transitions'
+                await self.review_configuration()
+                states = await self.states()
+                if any(states[n] != 'inactive' for n in (self.cal, self.zero)):
+                    raise Interrupted('Prepare requires both motion controllers inactive; no motion activation is attempted')
+                components = await self.call(self.hardware_client, ListHardwareComponents.Request())
+                stage = next((c for c in components.component if c.name == 'StageSystem'), None)
+                if stage is None or stage.class_type != 'zfc_ethercat_hardware/EthercatHardware':
+                    raise Interrupted('physical StageSystem unavailable')
+                if stage.state.label not in ('unconfigured', 'inactive', 'active'):
+                    raise Interrupted('StageSystem lifecycle requires on-site inspection')
+                for label in (('inactive', 'active') if stage.state.label == 'unconfigured' else ('active',) if stage.state.label == 'inactive' else ()):
+                    reply = await self.call(self.hardware_set_client, SetHardwareComponentState.Request(name='StageSystem', target_state=State(label=label)))
+                    if not reply.ok or reply.state.label != label:
+                        raise Interrupted('StageSystem transition to '+label+' rejected; no automatic retry')
+                active_stage(await self.call(self.hardware_client, ListHardwareComponents.Request()))
+                names = [n for n in ('joint_state_broadcaster', 'load_cell_broadcaster') if states.get(n) == 'inactive']
+                if any(states.get(n) not in ('active', 'inactive') for n in ('joint_state_broadcaster', 'load_cell_broadcaster')):
+                    raise Interrupted('configured inactive sensor broadcasters required')
+                if names:
+                    await self.switch(activate=names)
+                # Broadcasters are the ROS feedback path; no motion is claimed.
+                await self.wait(self.stationary, self.settings['service_timeout_s'], 'finite stationary sensor feedback after sensor-only activation')
+                states = await self.states()
+                if any(states[n] != 'inactive' for n in (self.cal, self.zero)):
+                    raise Interrupted('motion controller activated during Prepare')
+                self.stop_acknowledged = True
+                self.detail = 'streaming; motion controllers inactive; drive holding'
+            elif request.command == 'observe':
+                await self.stop()
+                self.detail = 'streaming; motion controllers inactive; drive holding'
+            else:
+                await self.readiness(request.external_contact_clear)
+                states = await self.states()
+                if states[self.zero] != 'inactive':
+                    raise Interrupted('zero-force must be inactive before explicit start')
+                terminal = self.calibration_terminal
+                if states[self.cal] == 'active' and not (terminal and terminal.trial_id == self.calibration_latest_trial and
+                        terminal.completed and terminal.successful and terminal.capture_complete):
+                    raise Interrupted('active sequencer handoff requires its matching successful terminal trial; cancel/observe an unfinished trajectory first')
+                if not self.stationary():
+                    raise Interrupted('stationary feedback required before zero-force start')
+                parameters = await self.parameter_snapshot(self.zero)
+                trial = max(time.time_ns(), self.last_trial+1, int(parameters['trial_id'])+1)
+                await self.start_zero(trial, [self.cal] if states[self.cal] == 'active' else [])
+                self.detail = 'zero-force compliant after fresh baseline/noise; drive remains powered'
+            self.stage = 'complete'
+            response.success = True
+        except Exception as error:
+            self.detail = str(error)
+            if request.command != 'prepare':
+                try:
+                    await self.stop()
+                except Exception as stop_error:
+                    self.unresolved_stop = True
+                    self.detail += '; STOP UNVERIFIED: '+str(stop_error)
+            # Failed Prepare never retries activation or enables motion. It may
+            # leave StageSystem powered/holding; explicitly report that ambiguity.
+            else:
+                self.stop_acknowledged = False
+                self.detail += '; preparation failed; StageSystem may be powered/holding; inspect states before retry'
+            self.stage = 'failed'
+        finally:
+            response.message, response.stop_acknowledged = self.detail, self.stop_acknowledged
+            self.busy = False
+            self.tick()
+        return response
+
     def goal(self, _):
-        if self.busy or self.unresolved_stop or not self.file_job.done() or self.settings['backend'] != 'gazebo':
+        if self.busy or self.unresolved_stop or not self.file_job.done():
             return GoalResponse.REJECT
         self.busy = True
         return GoalResponse.ACCEPT
@@ -337,9 +590,10 @@ class CalibrationAnalysis(Node):
         fit_job = None
         result = RunCalibration.Result()
         try:
-            self.stage, self.detail = 'preparing', 'release/inhibit force; configure inactive sequencer; subscribe before claim'
-            self.force_desired = False
-            await self.wait(lambda: self.ready and self.force_is(False), self.settings['service_timeout_s'], 'simulation ready and force interlock')
+            self.stage = 'preparing'
+            self.detail = ('Keep external contact clear; reviewed physical readiness and fresh stationary SI feedback' if self.settings['backend'] == 'ethercat'
+                           else 'release/inhibit force; configure inactive sequencer; subscribe before claim')
+            await self.readiness(goal.request.external_contact_clear)
             await self.stop()
             self.check()
             parameters = await self.parameter_snapshot(self.cal)
@@ -349,6 +603,7 @@ class CalibrationAnalysis(Node):
                 raise Interrupted('positive int64 trial-ID space exhausted')
             self.last_trial = trial
             directory = str(Path(self.settings['output_directory'])/str(trial))
+            self.trial_directory = directory
             await self.worker_result(self.submit_worker(reserve_trial, directory))
             self.capture = Capture(trial, self.settings['maximum_samples'], self.criteria.maximum_gap_s)
             # Armed BEFORE parameter/switch requests; all early sequence records retained.
@@ -358,9 +613,7 @@ class CalibrationAnalysis(Node):
             metadata = {'trial_id': trial, 'backend': self.settings['backend'], 'controller': self.cal,
                         'use_sim_time': self.get_parameter('use_sim_time').value,
                         'parameters': parameters, 'zero_force_parameters_before': zero_parameters,
-                        'model': {'sensor_frame': 'load_cell_link +X upward', 'force_path': 'parent_to_child, child frame',
-                                  'known_downstream_mass_kg': self.settings['known_downstream_mass_kg'],
-                                  'session_coordinate': 'known simulated mid-travel startup; not hardware lower stop'},
+                        'model': self.model_metadata(),
                         'acceleration_source': SOURCE, 'capture_counts': {}}
             self.stage, self.detail = 'recording', 'STRICT activation; synchronized full-rate batches'
             self.stop_acknowledged = False
@@ -397,19 +650,7 @@ class CalibrationAnalysis(Node):
             if applied['inertial_force_coefficient_kg'] != self.fit.inertial_force_coefficient_kg:
                 raise Interrupted('applied coefficient readback mismatch')
             if goal.request.activate_zero_force_after:
-                self.stage, self.detail = 'baseline', 'STRICT handoff; measured-position hold and fresh baseline/noise'
-                await self.set_parameters(self.zero, trial_id=trial+1)
-                self.zero_sample = None
-                await self.switch(activate=[self.zero], deactivate=[self.cal])
-                await self.wait(lambda: self.zero_sample is not None and self.zero_sample.trial_id == trial+1 and self.zero_sample.phase in (3, 5),
-                                self.settings['baseline_timeout_s'], 'zero-force baseline/noise completion')
-                if not self.zero_sample.valid or self.zero_sample.phase != 3:
-                    raise Interrupted('zero-force activation/baseline fault')
-                if not self.force_is(False):
-                    raise Interrupted('force interlock lost during baseline capture')
-                self.force_desired = True
-                await self.wait(lambda: self.force_is(True), self.settings['service_timeout_s'], 'released force re-enable acknowledgment')
-                self.force_desired = None
+                await self.start_zero(trial+1, [self.cal])
                 result.zero_force_active = True
             else:
                 # Successful, stationary sequencer remains holding during/manual after analysis.
@@ -464,16 +705,19 @@ class CalibrationAnalysis(Node):
         if self.busy or self.unresolved_stop or not self.file_job.done():
             response.message = 'another operation or unresolved stop is pending'
             return response
-        if self.settings['backend'] != 'gazebo':
-            response.message = 'physical commissioning is not enabled by this simulated workflow'
-            return response
         self.busy = True
         try:
-            fit = await self.worker_result(self.submit_worker(read_result, request.result_file, self.criteria))
+            self.stage = 'preparing'
+            await self.review_configuration()
+            provenance = {'backend': self.settings['backend'], 'model': self.model_metadata()}
+            fit = await self.worker_result(self.submit_worker(read_result, request.result_file, self.criteria, provenance))
             states = await self.states()
             if states[self.zero] != 'inactive':
                 raise Interrupted('zero-force must be inactive; apply service never switches motion')
             await self.set_parameters(self.zero, inertial_force_coefficient_kg=fit.inertial_force_coefficient_kg)
+            actual = await self.parameter_snapshot(self.zero)
+            if actual['inertial_force_coefficient_kg'] != fit.inertial_force_coefficient_kg:
+                raise Interrupted('applied coefficient readback mismatch')
             self.fit = fit
             response.success, response.message, response.fit = True, 'validated reusable result applied; activate explicitly', fit_message(fit)
         except Exception as error:
